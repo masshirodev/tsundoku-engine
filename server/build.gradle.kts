@@ -20,7 +20,6 @@ dependencies {
     implementation(libs.bundles.asm)
     implementation(libs.icu4j.charset)
     implementation(libs.quickjs4j)
-    implementation(libs.newpipe.extractor)
     implementation(libs.protobuf.javalite)
     if (iosRuntime) {
         runtimeOnly(libs.slf4jsimple)

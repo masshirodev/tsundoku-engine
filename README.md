@@ -28,11 +28,9 @@ You can obtain a copy of `Apache License Version 2.0` from  http://www.apache.or
 
 Changes to both codebases is licensed under `MPL 2.0` as the rest of this project.
 
-YouTube stream resolution uses
-[NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor), version
-`v0.26.3`, which is licensed under the GNU General Public License version 3.
-Distributed server bundles include NewPipe Extractor and must comply with its
-GPLv3 terms.
+Upstream resolves YouTube streams with NewPipe Extractor (GPLv3). This fork
+removes it (the `/youtube/resolve` route and its resolver), so its bundles
+contain no GPL code; `/capabilities` reports `"youtubeResolver":false`.
 
 ## License
 

@@ -36,7 +36,7 @@ class EmbeddedBridgeTest {
             }
             val capabilities =
                 URI("http://127.0.0.1:$port/capabilities").toURL().readText()
-            assertTrue(capabilities.contains("\"youtubeResolver\":true"))
+            assertTrue(capabilities.contains("\"youtubeResolver\":false"))
 
             EmbeddedBridge.pause()
             assertFalse(EmbeddedBridge.isRunning())
