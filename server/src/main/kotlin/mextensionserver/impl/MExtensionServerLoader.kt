@@ -23,13 +23,16 @@ import java.util.UUID
 object MExtensionServerLoader {
     private val logger = KotlinLogging.logger {}
     private val tempDir = Files.createTempDirectory("mextensionserver").toFile()
+    private val apkStore = ApkStore.fromEnv()
 
     // Extensions retain pagination iterators and other request state. Keep one
     // instance per APK for the server lifetime instead of decoding it per call.
     private val loadedExtensions =
         ExtensionInstanceCache(
             keyOf = ::sha256,
-            load = ::loadExtension,
+            // Stored exactly when it loads, so the store never holds an APK
+            // the engine refused.
+            load = { data -> loadExtension(data).also { apkStore?.put(sha256(data), data) } },
             dispose = LoadedExtension::close,
         )
 
@@ -112,7 +115,7 @@ object MExtensionServerLoader {
                 loadedExtensions.useAndGetKey(Base64.getDecoder().decode(base64Data), block)
             } else {
                 val key = requireNotNull(extensionId) { "Either data or extensionId is required" }
-                loadedExtensions.useByKey(key, block) ?: throw ExtensionNotLoadedException(key)
+                loadedExtensions.useByKeyOrStore(key, apkStore, block) ?: throw ExtensionNotLoadedException(key)
             }
         return ExtensionInvocation(keyedResult.key, keyedResult.value)
     }
