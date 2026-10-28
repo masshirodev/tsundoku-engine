@@ -6,10 +6,23 @@ import mextensionserver.impl.MExtensionServerLoader
 import mextensionserver.impl.MihonImageProxy
 import mextensionserver.impl.MihonVideoProxy
 import java.io.IOException
+import java.security.MessageDigest
 
+/**
+ * [token], when set, is required as `Authorization: Bearer <token>` on every
+ * route but `/`: no endpoint is otherwise authenticated, `/stop` stops the
+ * server, and the proxies fetch through each source's client and cookies, so
+ * anything that can reach the port could drive the engine. Unset (the
+ * default, as upstream), nothing changes.
+ */
 class MExtensionServerController(
     private val bindHost: String? = null,
+    private val token: String? = System.getenv(TOKEN_ENV)?.takeIf { it.isNotBlank() },
 ) {
+    companion object {
+        const val TOKEN_ENV = "ENGINE_TOKEN"
+    }
+
     private val logger = KotlinLogging.logger {}
     private var server: WebServer? = null
 
@@ -50,7 +63,21 @@ class MExtensionServerController(
     private inner class WebServer(
         port: Int,
     ) : NanoHTTPD(bindHost, port) {
-        override fun serve(session: IHTTPSession): Response =
+        override fun serve(session: IHTTPSession): Response {
+            if (session.uri != "/" && !authorized(session)) {
+                return newFixedLengthResponse(Response.Status.UNAUTHORIZED, MIME_PLAINTEXT, "Unauthorized")
+            }
+            return route(session)
+        }
+
+        private fun authorized(session: IHTTPSession): Boolean {
+            val expected = token ?: return true
+            val header = session.headers["authorization"] ?: return false
+            if (!header.startsWith("Bearer ")) return false
+            return MessageDigest.isEqual(header.removePrefix("Bearer ").toByteArray(), expected.toByteArray())
+        }
+
+        private fun route(session: IHTTPSession): Response =
             when (session.uri) {
                 "/dalvik" -> DalvikHandler().serve(session)
                 "/" -> newFixedLengthResponse("mextensionserver Server Running")
