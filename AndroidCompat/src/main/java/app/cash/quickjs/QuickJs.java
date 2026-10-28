@@ -77,12 +77,13 @@ public final class QuickJs implements Closeable {
             
             String output = runner.stdout().trim();
             
+            // The runner's stdout keeps every earlier evaluation's output, so
+            // this call's result is the last marker, not the first.
             String[] lines = output.split("\n");
             String resultLine = null;
             for (String line : lines) {
                 if (line.startsWith("QUICJS_RESULT:")) {
                     resultLine = line.substring("QUICJS_RESULT:".length());
-                    break;
                 }
             }
             
