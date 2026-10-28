@@ -81,7 +81,7 @@ public final class QuickJs implements Closeable {
             String resultLine = null;
             for (String line : lines) {
                 if (line.startsWith("QUICJS_RESULT:")) {
-                    resultLine = line.substring(7);
+                    resultLine = line.substring("QUICJS_RESULT:".length());
                     break;
                 }
             }
