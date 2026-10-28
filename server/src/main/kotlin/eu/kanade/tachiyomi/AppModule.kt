@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.protobuf.ProtoBuf
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
@@ -35,5 +36,8 @@ class AppModule(
                 coerceInputValues = true
             }
         }
+
+        // Mihon's app module provides this; MANGA Plus and other protobuf sources inject it.
+        addSingletonFactory<ProtoBuf> { ProtoBuf }
     }
 }
