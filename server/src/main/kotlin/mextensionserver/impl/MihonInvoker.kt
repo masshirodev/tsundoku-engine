@@ -104,6 +104,7 @@ object MihonInvoker {
         return when (data.method) {
             "headersManga" -> invokeHeadersManga(source as Source)
             "filtersManga" -> invokeFiltersManga(source as Source)
+            "filterSchemaManga" -> FilterSchema.of(invokeFiltersManga(source as Source))
             "supportLatestManga" -> invokeSupportLatestManga(source as Source)
             "getPopularManga" -> invokeGetPopularManga(source as Source, data.page ?: 1)
             "getLatestManga" -> invokeGetLatestManga(source as Source, data.page ?: 1)
@@ -117,6 +118,7 @@ object MihonInvoker {
             "setPreferenceManga" -> invokeSetPreferenceManga(source as Source, data)
             "headersAnime" -> invokeHeadersAnime(source as AnimeCatalogueSource)
             "filtersAnime" -> invokeFiltersAnime(source as AnimeCatalogueSource)
+            "filterSchemaAnime" -> FilterSchema.of(invokeFiltersAnime(source as AnimeCatalogueSource))
             "supportLatestAnime" -> invokeSupportLatestAnime(source as AnimeCatalogueSource)
             "getPopularAnime" -> invokeGetPopularAnime(source as AnimeCatalogueSource, data.page ?: 1)
             "getLatestAnime" -> invokeGetLatestAnime(source as AnimeCatalogueSource, data.page ?: 1)
