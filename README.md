@@ -1,3 +1,12 @@
+# tsundoku-engine
+
+A pinned fork of [M-Extension-Server](https://github.com/kodjodevf/M-Extension-Server)
+that runs Mihon and Aniyomi extensions for [tsundoku](https://github.com/masshirodev/tsundoku).
+What differs from upstream, and why: [`doc/FORK.md`](doc/FORK.md). Upstream's own
+README follows.
+
+---
+
 # M-Extension-Server — headless Mihon (Tachiyomi)/Aniyomi extensions server
 
 M-Extension-Server is a lightweight, headless service for running Mihon (Tachiyomi)/Aniyomi extensions (APKs). It dynamically loads extensions from Base64-encoded APKs, executes catalogue and content methods (manga/anime), and returns results via a small HTTP API.
