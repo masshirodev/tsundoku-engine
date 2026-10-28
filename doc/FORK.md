@@ -26,6 +26,13 @@ Everything after it on `main` is ours.
 | `ENGINE_APK_DIR`: loaded APKs kept under their handle          | Handles lived in memory only, so every restart meant a 409 per source and every APK resent and reconverted.                                                                                   | could offer                       |
 | `scripts/test.sh`                                              | Runs the Gradle suite in a throwaway JDK container: no JDK on the host, no daemon left running (on the workstation, Suwayomi's JVM runs as the same user, so killing "the java processes" is not safe). | no                                |
 
+**GitHub Actions are turned off** for this repository (Settings, or
+`gh api -X PUT repos/masshirodev/tsundoku-engine/actions/permissions -F enabled=false`).
+Upstream's workflows stay in `.github/` so rebases stay clean, but they build
+iOS runtimes on macOS runners for every pull request and publish releases on
+`v*` tags, and on a private repository those are metered minutes for nothing
+tsundoku uses. `scripts/test.sh` is the CI.
+
 Both environment variables are optional. Unset, the engine behaves exactly as
 upstream does, which is what Mangayomi's embedded bridge relies on.
 
