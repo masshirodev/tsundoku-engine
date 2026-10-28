@@ -75,15 +75,17 @@ class CloudflareInterceptor(
         logger.debug { "Cloudflare challenge on ${originalRequest.url.host}, solving through configured solver" }
 
         val solution =
-            try {
-                if (url.isNotEmpty()) {
-                    solve(url, originalRequest.url.toString())
-                } else {
-                    solveWithBridge(bridgePort, originalRequest.url.toString())
+            ChallengeLog.solving(originalRequest.url.host) {
+                try {
+                    if (url.isNotEmpty()) {
+                        solve(url, originalRequest.url.toString())
+                    } else {
+                        solveWithBridge(bridgePort, originalRequest.url.toString())
+                    }
+                } catch (e: Exception) {
+                    logger.warn(e) { "Solve call failed, returning the original response" }
+                    null
                 }
-            } catch (e: Exception) {
-                logger.warn(e) { "Solve call failed, returning the original response" }
-                null
             } ?: return response
 
         response.close()

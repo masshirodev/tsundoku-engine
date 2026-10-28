@@ -87,6 +87,14 @@ class MExtensionServerController(
                         "application/json",
                         """{"mangayomiMihonBridge":1,"sourceFactory":true,"preferenceCallbacks":true,"imageProxy":true,"videoProxy":true,"youtubeResolver":false,"sourceUrls":true,"extensionHandles":true,"extensionInfo":true,"webviewBridge":true}""",
                     )
+                // Which hosts' browser checks are being solved now, and when each last was (the fork's).
+                "/challenges" ->
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json",
+                        eu.kanade.tachiyomi.network.interceptor.ChallengeLog
+                            .json(),
+                    )
                 "/stop" -> {
                     newFixedLengthResponse("Server stopping").also {
                         Thread {
