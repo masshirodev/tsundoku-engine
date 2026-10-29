@@ -1,5 +1,6 @@
 package mextensionserver.impl
 
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.runBlocking
@@ -40,9 +41,13 @@ internal object MihonImageProxy {
         val page: Page,
     ) : Entry
 
+    // A poster needs only a client and headers, so a manga source's and an
+    // anime source's (which share no base class) both fit; both are read when
+    // the poster is fetched, as they were when this held the source itself.
     private data class PosterEntry(
         override val key: String,
-        val source: HttpSource,
+        val client: () -> OkHttpClient,
+        val headers: () -> Headers,
         val title: String,
         val originalUrl: String,
         val resolver: (OkHttpClient, String) -> String?,
@@ -98,13 +103,33 @@ internal object MihonImageProxy {
         title: String,
         url: String,
         resolver: (OkHttpClient, String) -> String? = { _, _ -> null },
+    ): String? = registerPoster(source.id, { source.client }, { source.headers }, title, url, resolver)
+
+    /**
+     * An anime's poster, through its source's client: some sites (AnimePahe's
+     * i.animepahe.pw) answer a plain request with a Cloudflare 403, and only
+     * the extension's client holds the clearance.
+     */
+    internal fun registerAnimePoster(
+        source: AnimeHttpSource,
+        title: String,
+        url: String,
+    ): String? = registerPoster(source.id, { source.client }, { source.headers }, title, url) { _, _ -> null }
+
+    private fun registerPoster(
+        sourceId: Long,
+        client: () -> OkHttpClient,
+        headers: () -> Headers,
+        title: String,
+        url: String,
+        resolver: (OkHttpClient, String) -> String?,
     ): String? {
         val currentPort = port
         if (currentPort <= 0) return null
 
         val key =
             buildString {
-                append(source.id)
+                append(sourceId)
                 append("\u0000poster\u0000")
                 append(title)
                 append('\u0000')
@@ -123,7 +148,8 @@ internal object MihonImageProxy {
             entriesByToken[token] =
                 PosterEntry(
                     key = key,
-                    source = source,
+                    client = client,
+                    headers = headers,
                     title = title,
                     originalUrl = url,
                     resolver = resolver,
@@ -207,33 +233,33 @@ internal object MihonImageProxy {
     private fun fetchPoster(entry: PosterEntry): ImageData? {
         val shouldTryOriginal = synchronized(lock) { !entry.originalFailed }
         if (shouldTryOriginal) {
-            fetchUrl(entry.source, entry.originalUrl)?.let { return it }
+            fetchUrl(entry, entry.originalUrl)?.let { return it }
             synchronized(lock) { entry.originalFailed = true }
         }
 
         val resolvedUrl =
             synchronized(lock) { entry.resolvedUrl }
-                ?: entry.resolver(entry.source.client, entry.title)?.also { resolved ->
+                ?: entry.resolver(entry.client(), entry.title)?.also { resolved ->
                     synchronized(lock) { entry.resolvedUrl = resolved }
                 }
                 ?: return null
-        return fetchUrl(entry.source, resolvedUrl)
+        return fetchUrl(entry, resolvedUrl)
     }
 
     private fun fetchUrl(
-        source: HttpSource,
+        entry: PosterEntry,
         url: String,
     ): ImageData? =
         runCatching {
             val requestUrl = url.toHttpUrl()
-            val sourceHeaders = runCatching { source.headers }.getOrDefault(Headers.Builder().build())
+            val sourceHeaders = runCatching { entry.headers() }.getOrDefault(Headers.Builder().build())
             val request =
                 Request
                     .Builder()
                     .url(requestUrl)
                     .headers(headersForImage(requestUrl, sourceHeaders))
                     .build()
-            source.client.newCall(request).execute().use { response ->
+            entry.client().newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use null
                 val body = response.body
                 val contentType = body.contentType()?.toString() ?: "application/octet-stream"

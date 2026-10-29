@@ -1,5 +1,10 @@
 package mextensionserver.impl
 
+import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.animesource.model.AnimesPage
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import mextensionserver.model.AnimeResponse
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -178,6 +183,71 @@ class MihonImageProxyTest {
 
         assertEquals(URI(firstPageUrl).path, URI(secondPageUrl).path)
         assertEquals(URI(firstPosterUrl).path, URI(secondPosterUrl).path)
+    }
+
+    @Test
+    fun `fetches anime posters through the anime extension client`() {
+        val source = TestAnimeSource()
+        MihonImageProxy.configure(39641)
+
+        val method =
+            MihonInvoker::class.java.getDeclaredMethod(
+                "invokeGetPopularAnime",
+                AnimeCatalogueSource::class.java,
+                Int::class.javaPrimitiveType,
+            )
+        method.isAccessible = true
+        val page = method.invoke(MihonInvoker, source, 1) as AnimeResponse
+        val poster = requireNotNull(page.animes?.single()?.thumbnail_url)
+        val image = requireNotNull(MihonImageProxy.fetch(URI(poster).path.substringAfterLast('/')))
+
+        assertTrue(poster.startsWith("http://127.0.0.1:39641/image/"))
+        assertEquals(listOf("https://cdn.anime.test/poster.webp"), source.requestedUrls)
+        assertEquals(listOf<String?>("https://anime.test/"), source.referers)
+        assertEquals("image/webp", image.contentType)
+        assertContentEquals(source.imageBytes, image.bytes)
+    }
+
+    private class TestAnimeSource : AnimeHttpSource() {
+        val imageBytes = byteArrayOf(0x52, 0x49, 0x46, 0x46)
+        val requestedUrls = mutableListOf<String>()
+        val referers = mutableListOf<String?>()
+
+        override val name = "Test anime"
+        override val lang = "en"
+        override val baseUrl = "https://anime.test"
+        override val supportsLatest = false
+
+        // A site that answers only the extension's own client, with its headers (AnimePahe's posters).
+        override val client: OkHttpClient =
+            OkHttpClient
+                .Builder()
+                .addInterceptor { chain ->
+                    requestedUrls += chain.request().url.toString()
+                    referers += chain.request().header("Referer")
+                    Response
+                        .Builder()
+                        .request(chain.request())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(imageBytes.toResponseBody("image/webp".toMediaType()))
+                        .build()
+                }.build()
+
+        override fun headersBuilder() = Headers.Builder().add("Referer", "https://anime.test/")
+
+        override suspend fun getPopularAnime(page: Int): AnimesPage =
+            AnimesPage(
+                listOf(
+                    SAnime.create().apply {
+                        url = "/a/1"
+                        title = "Frieren"
+                        thumbnail_url = "https://cdn.anime.test/poster.webp"
+                    },
+                ),
+                hasNextPage = false,
+            )
     }
 
     private open class TestHttpSource(

@@ -710,7 +710,7 @@ object MihonInvoker {
         runBlocking {
             val animesPage = source.getPopularAnime(page)
             AnimeResponse(
-                animes = animesPage.animes.map { it.toJAnime() },
+                animes = animesPage.animes.map { bridgeAnime(source, it) },
                 hasNextPage = animesPage.hasNextPage,
             )
         }
@@ -731,7 +731,7 @@ object MihonInvoker {
                     source.getPopularAnime(page)
                 }
             AnimeResponse(
-                animes = animesPage.animes.map { it.toJAnime() },
+                animes = animesPage.animes.map { bridgeAnime(source, it) },
                 hasNextPage = animesPage.hasNextPage,
             )
         }
@@ -746,7 +746,7 @@ object MihonInvoker {
             val convertedFilters = filterList?.let { convertAnimeFilterList(source.getFilterList(), it) } ?: source.getFilterList()
             val animesPage = source.getSearchAnime(page, search, convertedFilters)
             AnimeResponse(
-                animes = animesPage.animes.map { it.toJAnime() },
+                animes = animesPage.animes.map { bridgeAnime(source, it) },
                 hasNextPage = animesPage.hasNextPage,
             )
         }
@@ -773,8 +773,27 @@ object MihonInvoker {
                 } catch (_: NotImplementedError) {
                     source.getAnimeEpisodeUpdate(sAnime, emptyList(), fetchDetails = true, fetchEpisodes = false).anime
                 }
-            detailedAnime.toJAnime()
+            bridgeAnime(source, detailedAnime)
         }
+    }
+
+    /**
+     * An anime's poster through the image proxy, as bridgeManga does a manga's:
+     * the site may refuse a client that isn't the extension's (AnimePahe's
+     * posters answer a plain request with a Cloudflare 403).
+     */
+    private fun bridgeAnime(
+        source: AnimeCatalogueSource,
+        anime: SAnime,
+    ): JAnime {
+        val converted = anime.toJAnime()
+        if (source !is AnimeHttpSource) return converted
+        val thumbnailUrl = converted.thumbnail_url?.takeIf(String::isNotBlank) ?: return converted
+        return converted.copy(
+            thumbnail_url =
+                MihonImageProxy.registerAnimePoster(source, converted.title, thumbnailUrl)
+                    ?: thumbnailUrl,
+        )
     }
 
     private fun invokeGetAnimeUrl(
