@@ -20,8 +20,7 @@ class ApkStoreTest {
         dir.deleteRecursively()
     }
 
-    private fun sha256(data: ByteArray) =
-        MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
+    private fun sha256(data: ByteArray) = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
 
     private val apk = "an apk".toByteArray()
     private val key = sha256(apk)
@@ -47,10 +46,14 @@ class ApkStoreTest {
     @Test
     fun `a handle the process forgot is reloaded from the store`() {
         var loads = 0
+
         fun cache() =
             ExtensionInstanceCache(
                 keyOf = ::sha256,
-                load = { data: ByteArray -> loads++; String(data).also { store.put(sha256(data), data) } },
+                load = { data: ByteArray ->
+                    loads++
+                    String(data).also { store.put(sha256(data), data) }
+                },
                 dispose = { _: String -> },
             )
 

@@ -17,11 +17,12 @@ import kotlin.test.assertEquals
 class FilterSchemaTest {
     // Shaped as extensions write them: subclasses with fields of their own,
     // which Jackson would dump beside the base ones.
-    private class StatusSelect : Filter.Select<Pair<String, String>>(
-        "Status",
-        arrayOf("All" to "", "Ongoing" to "ongoing"),
-        1,
-    ) {
+    private class StatusSelect :
+        Filter.Select<Pair<String, String>>(
+            "Status",
+            arrayOf("All" to "", "Ongoing" to "ongoing"),
+            1,
+        ) {
         val query = "status"
     }
 
@@ -30,7 +31,17 @@ class FilterSchemaTest {
         val id: String,
     ) : Filter.TriState(name)
 
-    private class Genres : Filter.Group<Genre>("Genre", listOf(Genre("Action", "1"), Genre("Gore", "2").apply { state = Filter.TriState.STATE_EXCLUDE }))
+    private class Genres :
+        Filter.Group<Genre>(
+            "Genre",
+            listOf(
+                Genre("Action", "1"),
+                Genre("Gore", "2").apply {
+                    state =
+                        Filter.TriState.STATE_EXCLUDE
+                },
+            ),
+        )
 
     private class Author : Filter.Text("Author", "Oda")
 
