@@ -16,11 +16,19 @@ import java.security.MessageDigest
  * default, as upstream), nothing changes.
  */
 class MExtensionServerController(
-    private val bindHost: String? = null,
+    private val bindHost: String? = System.getenv(HOST_ENV)?.takeIf { it.isNotBlank() },
     private val token: String? = System.getenv(TOKEN_ENV)?.takeIf { it.isNotBlank() },
 ) {
     companion object {
         const val TOKEN_ENV = "ENGINE_TOKEN"
+
+        /**
+         * The address to listen on. Unset, every interface, as upstream: right
+         * in a container, whose port is published to localhost only. Run on a
+         * desktop (tsundoku's native bundle), 127.0.0.1 keeps the engine off
+         * the LAN, and off the firewall's prompt.
+         */
+        const val HOST_ENV = "ENGINE_HOST"
     }
 
     private val logger = KotlinLogging.logger {}

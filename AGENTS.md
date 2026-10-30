@@ -13,8 +13,8 @@ isn't listed there is one the next upstream rebase silently loses.
   commit, in upstream's style, so it can be sent as a pull request. Our own
   additions stay optional (an environment variable, off by default), so
   behaviour without them is upstream's.
-- `ENGINE_TOKEN` and `ENGINE_APK_DIR` are the fork's two switches
-  (`doc/FORK.md`). Never persist source preferences here: tsundoku owns them.
+- `ENGINE_TOKEN`, `ENGINE_APK_DIR` and `ENGINE_HOST` are the fork's
+  switches (`doc/FORK.md`). Never persist source preferences here: tsundoku owns them.
 - Licence: MPL-2.0, file by file. No GPL dependency comes back in (NewPipe was
   removed for that reason).
 
