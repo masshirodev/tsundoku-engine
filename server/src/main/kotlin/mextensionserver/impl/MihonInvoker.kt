@@ -824,8 +824,25 @@ object MihonInvoker {
         val sAnime = animeData.toSAnime()
         return runBlocking {
             val episodes = fetchEpisodesWithSeasons(source, sAnime)
-            episodes.map { it.toJEpisode() }
+            episodes.map { bridgeEpisode(source, it) }
         }
+    }
+
+    /**
+     * An episode's picture through the image proxy, as an anime's poster is
+     * (bridgeAnime): the same sites refuse a client that isn't the extension's.
+     */
+    private fun bridgeEpisode(
+        source: AnimeHttpSource,
+        episode: SEpisode,
+    ): JEpisode {
+        val converted = episode.toJEpisode()
+        val previewUrl = converted.preview_url ?: return converted
+        return converted.copy(
+            preview_url =
+                MihonImageProxy.registerAnimePoster(source, "episode\u0000${converted.url}", previewUrl)
+                    ?: previewUrl,
+        )
     }
 
     private suspend fun fetchEpisodesWithSeasons(

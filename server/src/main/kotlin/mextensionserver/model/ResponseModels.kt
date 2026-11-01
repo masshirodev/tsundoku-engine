@@ -72,6 +72,9 @@ data class JEpisode(
     val date_upload: Long,
     val episode_number: Float,
     val scanlator: String?,
+    // The episode's own picture (Aniyomi's SEpisode.preview_url), where the
+    // extension sets one; the invoker swaps it for an /image/ proxy address.
+    val preview_url: String? = null,
 )
 
 data class JPage(
@@ -144,4 +147,5 @@ fun SEpisode.toJEpisode(): JEpisode =
         date_upload = runCatching { this.date_upload }.getOrDefault(0L),
         episode_number = runCatching { this.episode_number }.getOrDefault(0f),
         scanlator = runCatching { this.scanlator }.getOrNull(),
+        preview_url = runCatching { this.preview_url }.getOrNull()?.takeIf(String::isNotBlank),
     )
