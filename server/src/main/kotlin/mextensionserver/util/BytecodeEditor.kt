@@ -770,8 +770,12 @@ object BytecodeEditor {
             allocations.forEach { allocation ->
                 val replacementType =
                     if (!expectedInfo.isInterface && !expectedInfo.isAbstract) {
+                        // Any ancestor, not only the direct one: R8 drops
+                        // trivial constructors up the whole chain, so dex2jar
+                        // writes `new Object` for a class two levels below it
+                        // (a singleton under an abstract base).
                         expectedType.takeIf {
-                            allocation.desc == expectedInfo.superName ||
+                            (allocation.desc != expectedType && isAssignableFrom(allocation.desc, expectedType)) ||
                                 (
                                     allocation.desc != expectedType &&
                                         classInfo(allocation.desc)?.superName == expectedInfo.superName

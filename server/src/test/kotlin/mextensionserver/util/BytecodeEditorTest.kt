@@ -65,6 +65,77 @@ class BytecodeEditorTest {
         }
     }
 
+    // R8 drops trivial constructors all the way up a chain, which ART allows,
+    // and dex2jar then folds `new-instance Singleton` plus `Object.<init>` into
+    // `new Object`. With an abstract class between the singleton and Object,
+    // the store into its INSTANCE failed verification (Aethon Webcomics 1.6.0:
+    // "Type 'java/lang/Object' is not assignable to 'p'").
+    @Test
+    fun `restores a singleton whose abstract parent lost its constructor too`() {
+        val jar = Files.createTempFile("bytecode-editor-test", ".jar")
+        try {
+            writeJar(
+                jar,
+                mapOf(
+                    "q.class" to constructorlessClass("q", "java/lang/Object", abstract = true),
+                    "p.class" to dexStyleSingleton("p", "q"),
+                ),
+            )
+
+            BytecodeEditor.fixAndroidClasses(jar)
+
+            URLClassLoader(arrayOf(jar.toUri().toURL()), javaClass.classLoader).use { loader ->
+                val instance = Class.forName("p", true, loader).getField("INSTANCE").get(null)
+                assertEquals("p", instance.javaClass.name)
+                assertEquals("q", instance.javaClass.superclass.name)
+            }
+        } finally {
+            Files.deleteIfExists(jar)
+        }
+    }
+
+    private fun constructorlessClass(
+        name: String,
+        superName: String,
+        abstract: Boolean,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        val access = Opcodes.ACC_PUBLIC or if (abstract) Opcodes.ACC_ABSTRACT else Opcodes.ACC_FINAL
+        writer.visit(Opcodes.V1_8, access, name, null, superName, null)
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun dexStyleSingleton(
+        name: String,
+        superName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, name, null, superName, null)
+        writer
+            .visitField(
+                Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL,
+                "INSTANCE",
+                "L$name;",
+                null,
+                null,
+            ).visitEnd()
+        writer
+            .visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null)
+            .apply {
+                visitCode()
+                visitTypeInsn(Opcodes.NEW, "java/lang/Object")
+                visitInsn(Opcodes.DUP)
+                visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+                visitFieldInsn(Opcodes.PUTSTATIC, name, "INSTANCE", "L$name;")
+                visitInsn(Opcodes.RETURN)
+                visitMaxs(2, 0)
+                visitEnd()
+            }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
     private fun writeJar(
         jar: Path,
         entries: Map<String, ByteArray>,
