@@ -19,10 +19,13 @@ import org.objectweb.asm.Type
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.FieldInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
+import org.objectweb.asm.tree.MethodNode
 import org.objectweb.asm.tree.TypeInsnNode
 import org.objectweb.asm.tree.analysis.Analyzer
+import org.objectweb.asm.tree.analysis.Frame
 import org.objectweb.asm.tree.analysis.SourceInterpreter
 import org.objectweb.asm.tree.analysis.SourceValue
+import org.objectweb.asm.tree.analysis.Value
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -97,6 +100,44 @@ object BytecodeEditor {
             }
         }
         return entries
+    }
+
+    /**
+     * A repair that can't analyse a method's frames leaves the method as it is.
+     * Say so: a silent skip is how an erased allocation reached the verifier
+     * with nothing in the log to explain it.
+     */
+    private fun skippedAnalysis(
+        owner: String,
+        method: String,
+        cause: Throwable,
+    ) {
+        logger.warn { "Bytecode repair skipped $owner.$method: its frames could not be analysed ($cause)" }
+    }
+
+    /**
+     * dex2jar can record a max_stack smaller than a method needs, and ASM's own
+     * recount (COMPUTE_MAXS) can agree with it while its Analyzer still needs
+     * one more slot. The Analyzer refuses such a method ("Insufficient maximum
+     * stack size"), and every repair here skipped it whole, so an erased
+     * allocation in it was never put back (Weeb Central 1.6.26 as re-released
+     * on 2026-11-07: h.intercept needs 9, says 8). The headroom is for the
+     * analysis only: the declared size is put back, and the class is written
+     * with its sizes recomputed in transform().
+     */
+    private const val ANALYSIS_STACK_HEADROOM = 16
+
+    private fun <V : Value> Analyzer<V>.analyzeWithHeadroom(
+        owner: String,
+        method: MethodNode,
+    ): Array<Frame<V>?> {
+        val declared = method.maxStack
+        method.maxStack = declared + ANALYSIS_STACK_HEADROOM
+        try {
+            return analyze(owner, method)
+        } finally {
+            method.maxStack = declared
+        }
     }
 
     /**
@@ -590,8 +631,9 @@ object BytecodeEditor {
                                     value: SourceValue,
                                 ): SourceValue = value
                             },
-                        ).analyze(node.name, method)
-                    }.getOrNull() ?: return@forEach
+                        ).analyzeWithHeadroom(node.name, method)
+                    }.onFailure { skippedAnalysis(node.name, method.name, it) }
+                        .getOrNull() ?: return@forEach
 
                 repairAbstractArrayAllocations(method.instructions.toArray(), frames).also {
                     changed = changed || it
@@ -856,8 +898,9 @@ object BytecodeEditor {
             node.methods.forEach { method ->
                 val frames =
                     runCatching {
-                        Analyzer(sourceInterpreter()).analyze(node.name, method)
-                    }.getOrNull() ?: return@forEach
+                        Analyzer(sourceInterpreter()).analyzeWithHeadroom(node.name, method)
+                    }.onFailure { skippedAnalysis(node.name, method.name, it) }
+                        .getOrNull() ?: return@forEach
                 method.instructions.toArray().forEachIndexed { index, instruction ->
                     if (
                         instruction !is MethodInsnNode ||
@@ -892,8 +935,9 @@ object BytecodeEditor {
                 if (declaredReturn.sort != Type.OBJECT) return@forEach
                 val frames =
                     runCatching {
-                        Analyzer(sourceInterpreter()).analyze(node.name, method)
-                    }.getOrNull() ?: return@forEach
+                        Analyzer(sourceInterpreter()).analyzeWithHeadroom(node.name, method)
+                    }.onFailure { skippedAnalysis(node.name, method.name, it) }
+                        .getOrNull() ?: return@forEach
                 val actualTypes =
                     method.instructions
                         .toArray()
@@ -925,8 +969,9 @@ object BytecodeEditor {
             node.methods.forEach { method ->
                 val frames =
                     runCatching {
-                        Analyzer(sourceInterpreter()).analyze(node.name, method)
-                    }.getOrNull() ?: return@forEach
+                        Analyzer(sourceInterpreter()).analyzeWithHeadroom(node.name, method)
+                    }.onFailure { skippedAnalysis(node.name, method.name, it) }
+                        .getOrNull() ?: return@forEach
                 method.instructions.toArray().forEachIndexed { index, instruction ->
                     val invocation = instruction as? MethodInsnNode ?: return@forEachIndexed
                     if (!classes.containsKey(invocation.owner)) return@forEachIndexed
@@ -1002,8 +1047,9 @@ object BytecodeEditor {
                     } ?: return@getOrPut null
                 val frames =
                     runCatching {
-                        Analyzer(sourceInterpreter()).analyze(node.name, method)
-                    }.getOrNull() ?: return@getOrPut null
+                        Analyzer(sourceInterpreter()).analyzeWithHeadroom(node.name, method)
+                    }.onFailure { skippedAnalysis(node.name, method.name, it) }
+                        .getOrNull() ?: return@getOrPut null
                 val returnTypes =
                     method.instructions
                         .toArray()

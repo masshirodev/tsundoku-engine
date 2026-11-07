@@ -94,6 +94,76 @@ class BytecodeEditorTest {
         }
     }
 
+    // dex2jar can write a max_stack smaller than the method needs. The repair's
+    // frame analysis then threw "Insufficient maximum stack size" and the whole
+    // method was skipped, so an erased `new Object` stayed erased and the
+    // putfield into it failed verification (Weeb Central 1.6.26 as re-released
+    // on 2026-11-07, h.intercept @387: "Type 'java/lang/Object' is not
+    // assignable to 'x'"). One pass must repair it, as the loader runs one.
+    @Test
+    fun `repairs an erased allocation in a method whose max stack dex2jar understated`() {
+        val jar = Files.createTempFile("bytecode-editor-test", ".jar")
+        try {
+            writeJar(
+                jar,
+                mapOf(
+                    "x.class" to constructorlessClassWithFlag("x"),
+                    "h.class" to dexStyleFieldWriter("h", "x", understatedMaxStack = true),
+                ),
+            )
+
+            BytecodeEditor.fixAndroidClasses(jar)
+
+            URLClassLoader(arrayOf(jar.toUri().toURL()), javaClass.classLoader).use { loader ->
+                val made = Class.forName("h", true, loader).getMethod("make").invoke(null)
+                assertEquals("x", made.javaClass.name)
+            }
+        } finally {
+            Files.deleteIfExists(jar)
+        }
+    }
+
+    private fun constructorlessClassWithFlag(name: String): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, name, null, "java/lang/Object", null)
+        writer.visitField(Opcodes.ACC_PUBLIC, "a", "Z", null, null).visitEnd()
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    /**
+     * `make()` as dex2jar writes R8's `new-instance x` with x's trivial
+     * constructor removed: `new Object`, Object.<init>, kept in a local, then a
+     * field of x written through it.
+     */
+    private fun dexStyleFieldWriter(
+        name: String,
+        owner: String,
+        understatedMaxStack: Boolean,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, name, null, "java/lang/Object", null)
+        writer
+            .visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "make", "()Ljava/lang/Object;", null, null)
+            .apply {
+                visitCode()
+                visitTypeInsn(Opcodes.NEW, "java/lang/Object")
+                visitInsn(Opcodes.DUP)
+                visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+                visitVarInsn(Opcodes.ASTORE, 0)
+                visitVarInsn(Opcodes.ALOAD, 0)
+                visitInsn(Opcodes.ICONST_0)
+                visitFieldInsn(Opcodes.PUTFIELD, owner, "a", "Z")
+                visitVarInsn(Opcodes.ALOAD, 0)
+                visitInsn(Opcodes.ARETURN)
+                // The method needs 2; dex2jar's output said less.
+                visitMaxs(if (understatedMaxStack) 1 else 2, 1)
+                visitEnd()
+            }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
     private fun constructorlessClass(
         name: String,
         superName: String,
