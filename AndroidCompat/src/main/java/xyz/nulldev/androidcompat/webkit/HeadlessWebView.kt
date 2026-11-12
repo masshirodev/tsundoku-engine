@@ -69,6 +69,19 @@ object HeadlessWebView {
     @Volatile
     var fromHttpClient: ((url: String) -> List<WebCookie>)? = null
 
+    private val timer =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "webview-timer").apply { isDaemon = true }
+        }
+
+    /** Runs [block] after [millis], on a thread of its own: a WebView's deadlines. */
+    internal fun later(
+        millis: Long,
+        block: () -> Unit,
+    ) {
+        timer.schedule({ runCatching(block).onFailure { logger.warn(it) { "A WebView deadline failed" } } }, millis, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
     /** A WebView extension was loaded: have Chromium ready (downloaded, started) by its first call. */
     fun prepare() {
         if (enabled) runtime.prepare()

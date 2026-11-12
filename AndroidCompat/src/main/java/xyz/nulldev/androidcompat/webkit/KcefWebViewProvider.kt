@@ -76,6 +76,7 @@ import org.cef.callback.CefMediaAccessCallback
 import org.cef.callback.CefQueryCallback
 import org.cef.handler.CefDisplayHandlerAdapter
 import org.cef.handler.CefLoadHandler
+import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefMessageRouterHandlerAdapter
 import org.cef.handler.CefPermissionHandler
@@ -100,6 +101,9 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.collections.Map
 import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
@@ -132,18 +136,23 @@ class KcefWebViewProvider(
         const val QUERY_FN = "__\$_suwayomiQuery"
         const val QUERY_CANCEL_FN = "__\$_suwayomiQueryCancel"
 
+        /** Longer than a renderer takes to close; past it the page is given back anyway. */
+        private const val BROWSER_CLOSE_MS = 5_000L
+
         @Volatile
         var bridgePort: Int = 0
 
         // Optional: nothing in this engine binds one (Suwayomi does), and a
         // lookup that throws would take the WebView's constructor down with it.
-        /** A navigation (a frame's document), and not the one loadUrl started. */
+        /** A navigation (a frame's document), and not one loadUrl or postUrl started. */
         internal fun asksShouldOverrideUrlLoading(
             resourceType: CefRequest.ResourceType?,
             frameUrl: String?,
+            ownNavigation: Boolean = false,
         ): Boolean =
             (resourceType == CefRequest.ResourceType.RT_MAIN_FRAME || resourceType == CefRequest.ResourceType.RT_SUB_FRAME) &&
-                !frameUrl.isNullOrEmpty()
+                !frameUrl.isNullOrEmpty() &&
+                !ownNavigation
 
         private val initHandler: InitBrowserHandler? by lazy {
             runCatching { DI.global.direct.instance<InitBrowserHandler>() }.getOrNull()
@@ -484,8 +493,10 @@ class KcefWebViewProvider(
             // stylesheet from a CDN, and the page never ran (MKissa, 2026-11-11).
             // TODO: we should be calling this on the handler, since CEF calls us on its IO thread
             // thus if a client tried to use WebView#loadUrl as the docs suggest, this fails
+            val ownNavigation =
+                request.resourceType == CefRequest.ResourceType.RT_MAIN_FRAME && ownNavigationPending.getAndSet(false)
             val cancel =
-                asksShouldOverrideUrlLoading(request.resourceType, frame?.url) &&
+                asksShouldOverrideUrlLoading(request.resourceType, frame?.url, ownNavigation) &&
                     viewClient.shouldOverrideUrlLoading(
                         view,
                         CefWebResourceRequest(request, frame, false),
@@ -597,6 +608,7 @@ class KcefWebViewProvider(
 
     private fun attachHandlers(client: KCEFClient): KCEFClient =
         client.apply {
+            if (HeadlessWebView.enabled) addLifeSpanHandler(LifeSpanHandler())
             addDisplayHandler(DisplayHandler())
             addLoadHandler(LoadHandler())
             addRequestHandler(RequestHandler())
@@ -613,6 +625,32 @@ class KcefWebViewProvider(
     // -------------------------------------------------------------------------
 
     private val pageLock = Any()
+
+    /**
+     * Browsers this WebView asked Chromium for and Chromium hasn't closed yet.
+     * Creating one is asynchronous: a close that arrives first is queued by
+     * JCEF until the browser exists, and if the page (its client) is given
+     * back in between, the late browser outlives it and keeps its renderer
+     * forever (DramaTip loads about:blank, then destroys, at once).
+     */
+    private val liveBrowsers = AtomicInteger()
+
+    /** A loadUrl or postUrl on a page that already has a browser: its navigation isn't put to shouldOverrideUrlLoading. */
+    private val ownNavigationPending = AtomicBoolean(false)
+    private val releaseWhenClosed = AtomicReference<(() -> Unit)?>()
+
+    private inner class LifeSpanHandler : CefLifeSpanHandlerAdapter() {
+        override fun onBeforeClose(browser: CefBrowser) {
+            if (liveBrowsers.decrementAndGet() <= 0) releaseWhenClosed.getAndSet(null)?.invoke()
+        }
+    }
+
+    /** Gives the page back once its browsers are closed, or after [BROWSER_CLOSE_MS] whatever happens. */
+    private fun releaseAfterBrowsersClose(ticket: ChromiumRuntime<KCEFClient>.Page) {
+        releaseWhenClosed.set { ticket.close() }
+        if (liveBrowsers.get() <= 0) releaseWhenClosed.getAndSet(null)?.invoke()
+        HeadlessWebView.later(BROWSER_CLOSE_MS) { releaseWhenClosed.getAndSet(null)?.invoke() }
+    }
 
     // Guarded by pageLock: touched from the main looper (the extension's
     // calls), the runtime thread (a page granted) and CEF's threads.
@@ -722,14 +760,29 @@ class KcefWebViewProvider(
         current?.dispose()
     }
 
-    /** A new browser for this WebView's next navigation, in its page. */
+    /**
+     * This WebView's next navigation, in its page: its one browser, as on
+     * Android, navigated by [reuse] when it has one and the caller can, else a
+     * new one. Closing a browser and creating another per navigation left a
+     * renderer behind whenever the WebView was destroyed straight after
+     * (DramaTip loads about:blank, then destroys), one per call.
+     */
     private fun headlessNavigate(
         url: String,
+        reuse: ((KCEFBrowser) -> Unit)? = null,
         create: (KCEFClient) -> KCEFBrowser,
     ) {
         withPage { client ->
-            closeBrowser()
             if (url.startsWith("http")) HeadlessWebView.pushCookies(url)
+            val current = browser
+            if (current != null && reuse != null && !current.isClosing) {
+                ownNavigationPending.set(true)
+                reuse(current)
+                Log.d(TAG, "Headless page navigated to $url")
+                return@withPage
+            }
+            closeBrowser()
+            liveBrowsers.incrementAndGet()
             browser = create(client).apply { createImmediately() }
             Log.d(TAG, "Headless page opened at $url")
         }
@@ -782,7 +835,7 @@ class KcefWebViewProvider(
                     kcefClient = null
                 }
             closeBrowser()
-            ticket?.close()
+            ticket?.let(::releaseAfterBrowsersClose)
             dropped.forEach { it.dropped() }
             return
         }
@@ -816,7 +869,13 @@ class KcefWebViewProvider(
         currentUrl = loadUrl
         if (HeadlessWebView.enabled) {
             chromeClient.onProgressChanged(view, 0)
-            headlessNavigate(loadUrl) { client ->
+            headlessNavigate(
+                loadUrl,
+                reuse = {
+                    initialRequestData = InitialRequestData(additionalHttpHeaders = additionalHttpHeaders)
+                    it.loadURL(loadUrl)
+                },
+            ) { client ->
                 initialRequestData = InitialRequestData(additionalHttpHeaders = additionalHttpHeaders)
                 client.createBrowser(loadUrl, ChromiumSetup.offscreen(), false)
             }
@@ -878,7 +937,19 @@ class KcefWebViewProvider(
         currentUrl = url
         if (HeadlessWebView.enabled) {
             chromeClient.onProgressChanged(view, 0)
-            headlessNavigate(url) { client ->
+            headlessNavigate(
+                url,
+                reuse = {
+                    // The body goes on in onBeforeResourceLoad, as for a new browser.
+                    initialRequestData = InitialRequestData(myPostData = postData)
+                    it.loadRequest(
+                        CefRequest.create().apply {
+                            setURL(url)
+                            setMethod("POST")
+                        },
+                    )
+                },
+            ) { client ->
                 initialRequestData = InitialRequestData(myPostData = postData)
                 client.createBrowser(url, ChromiumSetup.offscreen(), false)
             }

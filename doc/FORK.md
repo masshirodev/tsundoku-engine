@@ -125,7 +125,12 @@ server's side.
   destroys it, and after 120 s at the latest (`WebViewConfig.PAGE_LIFETIME_MS`,
   past every extension timeout seen), so a leaked WebView can't hold a
   renderer. A page beyond the cap waits; a WebView destroyed while waiting
-  never gets one.
+  never gets one. A WebView has one browser, navigated by each later
+  `loadUrl` or `postUrl` as on Android (upstream closed it and made another
+  each time), and its page goes back only once Chromium says its browsers
+  are closed (5 s at most): a browser is created asynchronously, and one
+  closed before it existed outlived its client and kept its renderer, one
+  per DramaTip call (it loads about:blank, then destroys).
 - **"Shut down when idle" means the pages, not Chromium.** Chromium (and KCEF)
   can be initialised once per process: after `KCEF.dispose` it can't come back
   without an engine restart. So at idle every page and renderer is gone, and
@@ -162,9 +167,13 @@ server's side.
 - Workstation (Arch, Temurin 21.0.13 from tsundoku's bundle, `DISPLAY` unset,
   2026-11-11/12): MKissa 16.75 (a page, a JavaScript interface, a script
   evaluated on `onPageFinished`, the site's own app decrypting the reply)
-  resolves an episode's 8 videos in 8-17 s; AniZone 16.16 lists, episodes and
-  2 videos (the stack fix, not WebView); Hyprland's window list did not change
-  over 79 samples while pages ran.
+  resolves an episode's 8 videos in 8-17 s; DramaTip 14.1 (its player run in
+  the page, pressed by a script, its playlist request caught in
+  `shouldInterceptRequest`) resolves HLS episodes in 3-11 s (one show's
+  player serves a direct MP4, which DramaTip doesn't pick yet); AniZone 16.16
+  lists, episodes and 2 videos (the stack fix, not WebView); Hyprland's
+  window list did not change over 79 samples while pages ran; after each
+  call no renderer remained, only the Xvfb.
 - A container with no X and no Xvfb: the WebView fails at once with what to
   install, nothing is downloaded, the engine stays up.
 - A headless Ubuntu 22.04 container with Xvfb and Chromium's libraries

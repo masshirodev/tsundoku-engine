@@ -151,7 +151,11 @@ class KcefWebViewProviderTest {
 
     @Test
     fun shouldOverrideUrlLoadingIsAskedAboutNavigationsOnly() {
-        val ask = KcefWebViewProvider::asksShouldOverrideUrlLoading
+        fun ask(
+            type: CefRequest.ResourceType,
+            frameUrl: String?,
+            ownNavigation: Boolean = false,
+        ) = KcefWebViewProvider.asksShouldOverrideUrlLoading(type, frameUrl, ownNavigation)
         // A link or a script moving the page: asked.
         assertTrue(ask(CefRequest.ResourceType.RT_MAIN_FRAME, "https://site.example/"))
         assertTrue(ask(CefRequest.ResourceType.RT_SUB_FRAME, "https://site.example/"))
@@ -160,9 +164,11 @@ class KcefWebViewProviderTest {
         assertFalse(ask(CefRequest.ResourceType.RT_SCRIPT, "https://site.example/"))
         assertFalse(ask(CefRequest.ResourceType.RT_STYLESHEET, "https://site.example/"))
         assertFalse(ask(CefRequest.ResourceType.RT_XHR, "https://site.example/"))
-        // What loadUrl itself started: never, as on Android.
-        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, ""))
-        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, null))
+        // What loadUrl itself started: never, as on Android, also on a page that
+        // already shows something (the WebView's browser is navigated, not replaced).
+        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, "", false))
+        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, null, false))
+        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, "https://site.example/", true))
     }
 
     @Test
