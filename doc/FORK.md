@@ -213,7 +213,8 @@ Once a fix marked "to send" is merged upstream, drop our copy in the rebase.
 - **The headless WebView on a headless server**: the container case above
   ("Proven, and not"), and Windows, macOS and WSL, which nobody has run.
 - **Chromium 111, unsandboxed**, runs streaming sites' scripts as the user
-  (an owner decision on tsundoku's board). `--js-flags=--jitless` would shrink
+  (an owner decision: tsundoku's card c978, "Engine WebView: Chromium 111
+  runs streaming sites' scripts unsandboxed, accept or harden?"). `--js-flags=--jitless` would shrink
   what an exploit can do but turns WebAssembly off, which players and
   decryptors use, so it is not set. A newer Chromium means a newer KCEF/JCEF
   pair, and KCEF's last release is 2024.04.20.4.
