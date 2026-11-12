@@ -59,6 +59,8 @@ object MExtensionServerLoader {
         val jarFile: File,
         private val classLoader: URLClassLoader,
         private val sourceFactory: (() -> List<Any>)? = null,
+        /** Its code uses android.webkit.WebView (the fork's, WebViewSupport). */
+        val usesWebView: Boolean = false,
     ) : AutoCloseable {
         @Volatile
         var sources: List<Any> = initialSources
@@ -131,6 +133,15 @@ object MExtensionServerLoader {
             // Get package info
             val packageInfo = getPackageInfo(tempApkFile.absolutePath)
 
+            // A WebView extension: have Chromium downloaded and started by the
+            // time its first call needs it (most give a WebView 10-30 s).
+            val usesWebView = runCatching { WebViewSupport.usesWebView(tempApkFile) }.getOrDefault(false)
+            if (usesWebView) {
+                logger.info { "${packageInfo.packageName} uses a WebView" }
+                xyz.nulldev.androidcompat.webkit.HeadlessWebView
+                    .prepare()
+            }
+
             // Extract class name
             val metaData = packageInfo.applicationInfo.metaData
             var classNameSuffix = metaData.getString(MANGA_PACKAGE + METADATA_SOURCE_CLASS_SUFFIX)
@@ -183,6 +194,7 @@ object MExtensionServerLoader {
                 jarFile,
                 loadedSource.classLoader,
                 sourceFactory,
+                usesWebView,
             )
         } catch (error: Throwable) {
             try {

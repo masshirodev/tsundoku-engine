@@ -94,6 +94,7 @@ import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import org.kodein.di.DI
 import org.kodein.di.conf.global
+import org.kodein.di.direct
 import org.kodein.di.instance
 import java.io.BufferedWriter
 import java.io.File
@@ -134,7 +135,11 @@ class KcefWebViewProvider(
         @Volatile
         var bridgePort: Int = 0
 
-        private val initHandler: InitBrowserHandler by DI.global.instance<InitBrowserHandler>()
+        // Optional: nothing in this engine binds one (Suwayomi does), and a
+        // lookup that throws would take the WebView's constructor down with it.
+        private val initHandler: InitBrowserHandler? by lazy {
+            runCatching { DI.global.direct.instance<InitBrowserHandler>() }.getOrNull()
+        }
     }
 
     public interface InitBrowserHandler {
@@ -258,6 +263,7 @@ class KcefWebViewProvider(
         ) {
             val url = frame.url ?: ""
             Log.v(TAG, "Load end $url")
+            if (HeadlessWebView.enabled && frame.isMain) HeadlessWebView.pullCookies(url)
             handler.post {
                 if (httpStatusCode == 404) {
                     viewClient.onReceivedError(
@@ -466,9 +472,9 @@ class KcefWebViewProvider(
             // thus if a client tried to use WebView#loadUrl as the docs suggest, this fails
             val cancel =
                 viewClient.shouldOverrideUrlLoading(
-                    view,
-                    CefWebResourceRequest(request, frame, false),
-                )
+                        view,
+                        CefWebResourceRequest(request, frame, false),
+                    )
             Log.v(TAG, "Resource ${request?.url}, result is cancel? $cancel")
 
             handler.post { viewClient.onLoadResource(view, frame?.url) }
@@ -556,25 +562,162 @@ class KcefWebViewProvider(
         Log.v(TAG, "KcefWebViewProvider: initialize")
         destroy()
         initializationFailure = null
+        if (HeadlessWebView.enabled) {
+            // The constructor runs on the main looper, which every extension
+            // shares: never wait for Chromium here (a first start downloads it).
+            // The page is asked for on the first load, and loads wait for it.
+            HeadlessWebView.prepare()
+            initHandler?.init(this)
+            return
+        }
         try {
-            kcefClient =
-                KCEF.newClientBlocking().apply {
-                    addDisplayHandler(DisplayHandler())
-                    addLoadHandler(LoadHandler())
-                    addRequestHandler(RequestHandler())
-                    addPermissionHandler(PermissionHandler())
-
-                    val config = CefMessageRouter.CefMessageRouterConfig()
-                    config.jsQueryFunction = QUERY_FN
-                    config.jsCancelFunction = QUERY_CANCEL_FN
-                    addMessageRouter(CefMessageRouter.create(config, MessageRouterHandler()))
-                }
+            kcefClient = attachHandlers(KCEF.newClientBlocking())
         } catch (error: Throwable) {
             initializationFailure = error
             Log.w(TAG, "Desktop WebView (CEF) is unavailable; will use bridge or stub if needed", error)
             return
         }
-        initHandler.init(this)
+        initHandler?.init(this)
+    }
+
+    private fun attachHandlers(client: KCEFClient): KCEFClient =
+        client.apply {
+            addDisplayHandler(DisplayHandler())
+            addLoadHandler(LoadHandler())
+            addRequestHandler(RequestHandler())
+            addPermissionHandler(PermissionHandler())
+
+            val config = CefMessageRouter.CefMessageRouterConfig()
+            config.jsQueryFunction = QUERY_FN
+            config.jsCancelFunction = QUERY_CANCEL_FN
+            addMessageRouter(CefMessageRouter.create(config, MessageRouterHandler()))
+        }
+
+    // -------------------------------------------------------------------------
+    // Headless Chromium (ENGINE_WEBVIEW, doc/FORK.md)
+    // -------------------------------------------------------------------------
+
+    private val pageLock = Any()
+
+    // Guarded by pageLock: touched from the main looper (the extension's
+    // calls), the runtime thread (a page granted) and CEF's threads.
+    private var page: ChromiumRuntime<KCEFClient>.Page? = null
+    private val pendingActions = mutableListOf<PendingAction>()
+
+    /** [dropped] answers for the action if its page never comes (a script's callback still hears null). */
+    private class PendingAction(
+        val run: (KCEFClient) -> Unit,
+        val dropped: () -> Unit,
+    )
+
+    /**
+     * Runs [action] with this WebView's page, asking for one if it has none.
+     * Until the page is granted (Chromium starting, or every page in use) the
+     * action waits, in order. A failure reaches the extension as a load error,
+     * which is how a real WebView reports one; nothing is thrown at its thread.
+     */
+    private fun withPage(
+        dropped: () -> Unit = {},
+        action: (KCEFClient) -> Unit,
+    ) {
+        val client =
+            synchronized(pageLock) {
+                kcefClient ?: run {
+                    pendingActions.add(PendingAction(action, dropped))
+                    if (page == null) {
+                        page =
+                            HeadlessWebView.runtime.open(
+                                onGranted = ::onPageGranted,
+                                onFailed = ::onPageFailed,
+                                onExpired = ::onPageExpired,
+                            )
+                    }
+                    null
+                }
+            } ?: return
+        runPageAction(client, action)
+    }
+
+    private fun onPageGranted(client: KCEFClient) {
+        val actions =
+            synchronized(pageLock) {
+                if (page == null) {
+                    // Destroyed while it waited: the runtime closes it with the ticket.
+                    return
+                }
+                kcefClient = attachHandlers(client)
+                pendingActions.toList().also { pendingActions.clear() }
+            }
+        actions.forEach { runPageAction(client, it.run) }
+    }
+
+    private fun onPageFailed(error: Throwable) {
+        val dropped = takePending { page = null }
+        initializationFailure = error
+        reportUnavailable(currentUrl.orEmpty(), error.message ?: "WebView is unavailable")
+        dropped.forEach { it.dropped() }
+    }
+
+    private fun onPageExpired() {
+        val dropped =
+            takePending {
+                page = null
+                kcefClient = null
+            }
+        closeBrowser()
+        dropped.forEach { it.dropped() }
+    }
+
+    private fun takePending(also: () -> Unit): List<PendingAction> =
+        synchronized(pageLock) {
+            also()
+            pendingActions.toList().also { pendingActions.clear() }
+        }
+
+    private fun runPageAction(
+        client: KCEFClient,
+        action: (KCEFClient) -> Unit,
+    ) {
+        try {
+            action(client)
+        } catch (error: Throwable) {
+            Log.w(TAG, "WebView page action failed", error)
+            reportUnavailable(currentUrl.orEmpty(), "WebView page failed: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
+
+    private fun reportUnavailable(
+        url: String,
+        reason: String,
+    ) {
+        Log.w(TAG, "WebView for $url: $reason")
+        handler.post {
+            viewClient.onReceivedError(view, WebViewClient.ERROR_UNKNOWN, reason, url)
+            chromeClient.onProgressChanged(view, 100)
+            viewClient.onPageFinished(view, url)
+        }
+    }
+
+    private fun closeBrowser() {
+        val current = browser
+        browser = null
+        // Cookies a page set after it finished loading (a script's own requests) go across too.
+        current?.url?.let(HeadlessWebView::pullCookies)
+        current?.close(true)
+        current?.dispose()
+    }
+
+    /** A new browser for this WebView's next navigation, in its page. */
+    private fun headlessNavigate(
+        url: String,
+        create: (KCEFClient) -> KCEFBrowser,
+    ) {
+        withPage { client ->
+            closeBrowser()
+            if (url.startsWith("http")) HeadlessWebView.pushCookies(url)
+            browser = create(client).apply { createImmediately() }
+            Log.d(TAG, "Headless page opened at $url")
+        }
     }
 
     private fun requireKcefClient(): KCEFClient =
@@ -613,6 +756,21 @@ class KcefWebViewProvider(
     ): Array<String> = emptyArray()
 
     override fun destroy() {
+        if (HeadlessWebView.enabled) {
+            // The client belongs to the runtime's page: giving the page back
+            // disposes it, and lets a waiting WebView have the slot.
+            var ticket: ChromiumRuntime<KCEFClient>.Page? = null
+            val dropped =
+                takePending {
+                    ticket = page
+                    page = null
+                    kcefClient = null
+                }
+            closeBrowser()
+            ticket?.close()
+            dropped.forEach { it.dropped() }
+            return
+        }
         browser?.close(true)
         browser?.dispose()
         browser = null
@@ -641,6 +799,14 @@ class KcefWebViewProvider(
         additionalHttpHeaders: Map<String, String>,
     ) {
         currentUrl = loadUrl
+        if (HeadlessWebView.enabled) {
+            chromeClient.onProgressChanged(view, 0)
+            headlessNavigate(loadUrl) { client ->
+                initialRequestData = InitialRequestData(additionalHttpHeaders = additionalHttpHeaders)
+                client.createBrowser(loadUrl, ChromiumSetup.offscreen(), false)
+            }
+            return
+        }
         browser?.close(true)
         browser?.dispose()
         browser = null
@@ -695,6 +861,14 @@ class KcefWebViewProvider(
         postData: ByteArray,
     ) {
         currentUrl = url
+        if (HeadlessWebView.enabled) {
+            chromeClient.onProgressChanged(view, 0)
+            headlessNavigate(url) { client ->
+                initialRequestData = InitialRequestData(myPostData = postData)
+                client.createBrowser(url, ChromiumSetup.offscreen(), false)
+            }
+            return
+        }
         browser?.close(true)
         browser?.dispose()
         browser = null
@@ -758,6 +932,16 @@ class KcefWebViewProvider(
     ) {
         currentUrl = baseUrl ?: historyUrl
         baseUrl?.let { urlHttpMapping[it.trimEnd('/')] = data }
+        if (HeadlessWebView.enabled) {
+            chromeClient.onProgressChanged(view, 0)
+            headlessNavigate(baseUrl ?: KCEFBrowser.BLANK_URI) { client ->
+                // With a base URL, the page is that URL answered from
+                // urlHttpMapping (getResourceHandler), so its origin is right.
+                baseUrl?.let { client.createBrowser(it, ChromiumSetup.offscreen(), false) }
+                    ?: client.createBrowserWithHtml(data, KCEFBrowser.BLANK_URI, ChromiumSetup.offscreen(), false)
+            }
+            return
+        }
         browser?.close(true)
         browser?.dispose()
         browser = null
@@ -801,6 +985,36 @@ class KcefWebViewProvider(
         script: String,
         resultCallback: ValueCallback<String>,
     ) {
+        if (HeadlessWebView.enabled && browser == null) {
+            val evaluate: (KCEFClient) -> Unit = {
+                val ready = browser
+                if (ready == null) {
+                    handler.post { resultCallback.onReceiveValue(null) }
+                } else {
+                    ready.evaluateJavaScript(script.removePrefix("javascript:")) { result ->
+                        handler.post { resultCallback.onReceiveValue(result) }
+                    }
+                }
+            }
+            // A page on its way (Chromium starting, or waiting for a slot): run
+            // after the navigation queued ahead, as a real WebView would. No page
+            // coming: null now. Never ask for a page here: an extension that
+            // evaluates from onPageFinished would, after a failed load, ask for
+            // one, fail, finish, evaluate again (538 times in 30 s, MKissa).
+            val queued =
+                synchronized(pageLock) {
+                    (page != null && kcefClient == null).also { pending ->
+                        if (pending) {
+                            pendingActions.add(PendingAction(evaluate) { handler.post { resultCallback.onReceiveValue(null) } })
+                        }
+                    }
+                }
+            if (!queued) {
+                val client = kcefClient
+                if (client != null) runPageAction(client, evaluate) else handler.post { resultCallback.onReceiveValue(null) }
+            }
+            return
+        }
         val b = browser
         if (b != null) {
             b.evaluateJavaScript(

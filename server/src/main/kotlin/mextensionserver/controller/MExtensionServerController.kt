@@ -97,7 +97,15 @@ class MExtensionServerController(
                     newFixedLengthResponse(
                         Response.Status.OK,
                         "application/json",
-                        """{"mangayomiMihonBridge":1,"sourceFactory":true,"preferenceCallbacks":true,"imageProxy":true,"videoProxy":true,"youtubeResolver":false,"sourceUrls":true,"extensionHandles":true,"extensionInfo":true,"webviewBridge":true}""",
+                        """{"mangayomiMihonBridge":1,"sourceFactory":true,"preferenceCallbacks":true,"imageProxy":true,"videoProxy":true,"youtubeResolver":false,"sourceUrls":true,"extensionHandles":true,"extensionInfo":true,"webviewBridge":true,"webview":${xyz.nulldev.androidcompat.webkit.HeadlessWebView.enabled}}""",
+                    )
+                // The headless Chromium WebView extensions run in, and how it is (the fork's, ENGINE_WEBVIEW).
+                "/webview" ->
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json",
+                        xyz.nulldev.androidcompat.webkit.HeadlessWebView
+                            .statusJson(),
                     )
                 // Which hosts' browser checks are being solved now, and when each last was (the fork's).
                 "/challenges" ->

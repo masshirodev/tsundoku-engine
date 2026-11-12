@@ -10,11 +10,15 @@ package mextensionserver
 
 import android.os.Looper
 import eu.kanade.tachiyomi.App
+import eu.kanade.tachiyomi.network.NetworkHelper
 import io.github.oshai.kotlinlogging.KotlinLogging
 import mextensionserver.controller.MExtensionServerController
+import mextensionserver.impl.WebViewSupport
 import mextensionserver.ui.ServerWindow
 import org.kodein.di.DI
 import org.kodein.di.conf.global
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import xyz.nulldev.androidcompat.AndroidCompat
 import xyz.nulldev.androidcompat.AndroidCompatInitializer
 import xyz.nulldev.ts.config.ApplicationRootDir
@@ -43,6 +47,13 @@ fun main(args: Array<String>) {
         // Must be set before any AWT/Swing initialisation
         System.setProperty("apple.awt.application.name", "MExtension Server")
         System.setProperty("apple.laf.useScreenMenuBar", "true")
+    } else {
+        // Headless Chromium (ENGINE_WEBVIEW) brings AWT classes in. Without a
+        // window to show, AWT has no business on a desktop's display, or in
+        // macOS's Dock. Set before anything touches AWT.
+        val os = System.getProperty("os.name").orEmpty().lowercase()
+        if (os.startsWith("linux")) System.setProperty("java.awt.headless", "true")
+        if (os.startsWith("mac")) System.setProperty("apple.awt.UIElement", "true")
     }
 
     initApplication(appDir)
@@ -80,6 +91,9 @@ internal fun initApplication(appDir: String?) {
         AndroidCompatInitializer().init()
         // start app
         androidCompat.startApp(App())
+        // A WebView's cookies and the extensions' HTTP client's are one jar in
+        // Mihon; join them here (HeadlessWebView, doc/FORK.md).
+        WebViewSupport.connect(Injekt.get<NetworkHelper>().cookieJar)
         applicationInitialized = true
     }
 }

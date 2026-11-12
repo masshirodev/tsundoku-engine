@@ -19,8 +19,10 @@ class DalvikHandler {
             configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         }
 
-    fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response =
-        try {
+    fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
+        // Set once the extension is known: its errors then say how the WebView is.
+        var webViewExtension = false
+        return try {
             // Parse JSON body first to get extension data
             val body = mutableMapOf<String, String>()
             session.parseBody(body)
@@ -42,6 +44,7 @@ class DalvikHandler {
 
             val invocation =
                 MExtensionServerLoader.invokeWithExtension(dataBody.data, dataBody.extensionId) { loadedExtension ->
+                    webViewExtension = loadedExtension.usesWebView
                     val selectedSource = MihonInvoker.selectSource(loadedExtension.sources, dataBody)
                     MihonInvoker.preparePreferences(dataBody, selectedSource)
 
@@ -147,12 +150,16 @@ class DalvikHandler {
                     addHeader("X-Mangayomi-Extension-Id", invocation.extensionId)
                 }
         } catch (e: LinkageError) {
-            errorResponse(e)
+            errorResponse(e, webViewExtension)
         } catch (e: Exception) {
-            errorResponse(e)
+            errorResponse(e, webViewExtension)
         }
+    }
 
-    private fun errorResponse(error: Throwable): NanoHTTPD.Response {
+    private fun errorResponse(
+        error: Throwable,
+        webViewExtension: Boolean = false,
+    ): NanoHTTPD.Response {
         logger.error(error) { "Error handling request" }
         val status =
             when (error) {
@@ -179,7 +186,20 @@ class DalvikHandler {
                         is eu.kanade.tachiyomi.network.HttpException -> error.code
                         else -> 500
                     },
-            )
+            ) +
+                // An extension's own WebView timeout reads "timed out"; this says why
+                // (Chromium still downloading, no display, ENGINE_WEBVIEW off).
+                if (webViewExtension) {
+                    mapOf(
+                        "webview" to
+                            objectMapper.readTree(
+                                xyz.nulldev.androidcompat.webkit.HeadlessWebView
+                                    .statusJson(),
+                            ),
+                    )
+                } else {
+                    emptyMap()
+                }
         val errorJson = objectMapper.writeValueAsString(errorResponse)
         return NanoHTTPD.newFixedLengthResponse(
             status,

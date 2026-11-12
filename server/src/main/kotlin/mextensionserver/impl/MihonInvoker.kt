@@ -285,6 +285,8 @@ object MihonInvoker {
             "lang" to language,
             "isNsfw" to isNsfw,
             "itemType" to itemType,
+            // The fork's: its code uses a WebView, so it needs Chromium (GET /webview).
+            "usesWebView" to extension.usesWebView,
             "sources" to sources.map(::sourceDescriptor),
         )
     }

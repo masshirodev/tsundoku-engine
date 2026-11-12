@@ -13,8 +13,13 @@ isn't listed there is one the next upstream rebase silently loses.
   commit, in upstream's style, so it can be sent as a pull request. Our own
   additions stay optional (an environment variable, off by default), so
   behaviour without them is upstream's.
-- `ENGINE_TOKEN`, `ENGINE_APK_DIR` and `ENGINE_HOST` are the fork's
-  switches (`doc/FORK.md`). Never persist source preferences here: tsundoku owns them.
+- `ENGINE_TOKEN`, `ENGINE_APK_DIR`, `ENGINE_HOST` and `ENGINE_WEBVIEW`
+  (with `ENGINE_WEBVIEW_DIR`, `ENGINE_WEBVIEW_PAGES`) are the fork's switches
+  (`doc/FORK.md`). Never persist source preferences here: tsundoku owns them.
+- The headless WebView (`doc/FORK.md`, "Headless WebView") runs Chromium in
+  the engine's own process, so nothing may start it unproven: it is always
+  started once in a child JVM first (`ChromiumProbe`), because Chromium that
+  can't start aborts the process it is in. Keep that order.
 - Licence: MPL-2.0, file by file. No GPL dependency comes back in (NewPipe was
   removed for that reason).
 
