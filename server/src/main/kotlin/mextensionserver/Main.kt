@@ -17,6 +17,8 @@ import org.kodein.di.DI
 import org.kodein.di.conf.global
 import xyz.nulldev.androidcompat.AndroidCompat
 import xyz.nulldev.androidcompat.AndroidCompatInitializer
+import xyz.nulldev.ts.config.ApplicationRootDir
+import xyz.nulldev.ts.config.CONFIG_PREFIX
 import xyz.nulldev.ts.config.ConfigKodeinModule
 import java.net.CookieHandler
 import java.net.CookieManager
@@ -67,7 +69,7 @@ internal fun initApplication(appDir: String?) {
         logger.info("Running MExtensionServer ${BuildConfig.VERSION} revision ${BuildConfig.REVISION}")
 
         // Set custom app directory if provided
-        appDir?.let { System.setProperty("ts.server.rootDir", it) }
+        appDir?.let(::useAppDir)
         CookieHandler.setDefault(CookieManager())
 
         startMainLooper()
@@ -80,6 +82,19 @@ internal fun initApplication(appDir: String?) {
         androidCompat.startApp(App())
         applicationInitialized = true
     }
+}
+
+/**
+ * Makes [appDir] the root every engine file goes under. Upstream set only
+ * `ts.server.rootDir`, which nothing reads: [ApplicationRootDir] reads
+ * `suwayomi.tachidesk.config.server.rootDir`, so the argument was ignored and
+ * the engine wrote preferences and AndroidCompat files into Suwayomi's own
+ * default data folder (`~/.local/share/Tachidesk` on Linux), where a Suwayomi
+ * running as the same user keeps its own `settings/<source>.xml`.
+ */
+internal fun useAppDir(appDir: String) {
+    System.setProperty("ts.server.rootDir", appDir)
+    System.setProperty("$CONFIG_PREFIX.server.rootDir", appDir)
 }
 
 private fun startMainLooper() {
