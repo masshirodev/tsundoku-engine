@@ -7,6 +7,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import dev.datlag.kcef.KCEFClient
+import org.cef.network.CefRequest
 import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.LinkedBlockingQueue
@@ -15,6 +16,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -145,6 +147,22 @@ class KcefWebViewProviderTest {
         assertTrue(events.next().startsWith("error"))
         // Answered at once rather than left to the extension's own timeout.
         assertNull(result.get(5, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun shouldOverrideUrlLoadingIsAskedAboutNavigationsOnly() {
+        val ask = KcefWebViewProvider::asksShouldOverrideUrlLoading
+        // A link or a script moving the page: asked.
+        assertTrue(ask(CefRequest.ResourceType.RT_MAIN_FRAME, "https://site.example/"))
+        assertTrue(ask(CefRequest.ResourceType.RT_SUB_FRAME, "https://site.example/"))
+        // The page's own scripts, styles and XHRs, from a CDN or not: never
+        // (MKissa's "stay on the site" check cancelled its whole app).
+        assertFalse(ask(CefRequest.ResourceType.RT_SCRIPT, "https://site.example/"))
+        assertFalse(ask(CefRequest.ResourceType.RT_STYLESHEET, "https://site.example/"))
+        assertFalse(ask(CefRequest.ResourceType.RT_XHR, "https://site.example/"))
+        // What loadUrl itself started: never, as on Android.
+        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, ""))
+        assertFalse(ask(CefRequest.ResourceType.RT_MAIN_FRAME, null))
     }
 
     @Test

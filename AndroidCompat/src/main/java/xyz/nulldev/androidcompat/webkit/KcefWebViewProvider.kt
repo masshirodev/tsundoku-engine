@@ -137,6 +137,14 @@ class KcefWebViewProvider(
 
         // Optional: nothing in this engine binds one (Suwayomi does), and a
         // lookup that throws would take the WebView's constructor down with it.
+        /** A navigation (a frame's document), and not the one loadUrl started. */
+        internal fun asksShouldOverrideUrlLoading(
+            resourceType: CefRequest.ResourceType?,
+            frameUrl: String?,
+        ): Boolean =
+            (resourceType == CefRequest.ResourceType.RT_MAIN_FRAME || resourceType == CefRequest.ResourceType.RT_SUB_FRAME) &&
+                !frameUrl.isNullOrEmpty()
+
         private val initHandler: InitBrowserHandler? by lazy {
             runCatching { DI.global.direct.instance<InitBrowserHandler>() }.getOrNull()
         }
@@ -180,7 +188,9 @@ class KcefWebViewProvider(
     ) : WebResourceRequest {
         override fun getUrl(): Uri = Uri.parse(request?.url)
 
-        override fun isForMainFrame(): Boolean = frame?.isMain ?: false
+        // Whether this request is the main frame's document, as Android means it; a
+        // script or image the main frame loads is not (frame.isMain says it was).
+        override fun isForMainFrame(): Boolean = request?.resourceType == CefRequest.ResourceType.RT_MAIN_FRAME
 
         override fun isRedirect(): Boolean = redirect
 
@@ -468,10 +478,15 @@ class KcefWebViewProvider(
             initialRequestData = null
             request.setHeaderByName("user-agent", settings.userAgentString, true)
 
+            // Android asks shouldOverrideUrlLoading about navigations only, and not
+            // about the one loadUrl started. Asked about every resource, an
+            // extension's "stay on the site" check cancelled each script and
+            // stylesheet from a CDN, and the page never ran (MKissa, 2026-11-11).
             // TODO: we should be calling this on the handler, since CEF calls us on its IO thread
             // thus if a client tried to use WebView#loadUrl as the docs suggest, this fails
             val cancel =
-                viewClient.shouldOverrideUrlLoading(
+                asksShouldOverrideUrlLoading(request.resourceType, frame?.url) &&
+                    viewClient.shouldOverrideUrlLoading(
                         view,
                         CefWebResourceRequest(request, frame, false),
                     )
