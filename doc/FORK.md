@@ -59,9 +59,13 @@ replace mode, so the engine's copy is only ever this process's.
 
 ## Headless WebView
 
-`ENGINE_WEBVIEW=on` runs WebView extensions (a page loaded in a hidden
-WebView, a request the site's own player makes caught, a script evaluated in
-it) in a Chromium nobody sees. Off, nothing below happens and a WebView fails
+The engine's WebView support. `ENGINE_WEBVIEW=on` gives every extension that
+uses `android.webkit.WebView`, Mihon (manga) or Aniyomi (anime), for any site,
+a real browser nobody sees: a page loaded in a hidden WebView, a script
+evaluated in it, a JavaScript interface, the requests the page makes seen in
+`shouldInterceptRequest`, its cookies shared with the extension's HTTP client.
+Nothing here knows any extension or site. (The engine loads no novel
+extensions at all; one that did would get the same WebView.) Off, nothing below happens and a WebView fails
 as upstream's does (Mangayomi's bridge, or a load error).
 
 | Variable               | Default                       | What it is                                                     |
@@ -131,7 +135,7 @@ server's side.
   each time), and its page goes back only once Chromium says its browsers
   are closed (5 s at most): a browser is created asynchronously, and one
   closed before it existed outlived its client and kept its renderer, one
-  per DramaTip call (it loads about:blank, then destroys).
+  per call of an extension that loads about:blank and then destroys its WebView.
 - **"Shut down when idle" means the pages, not Chromium.** Chromium (and KCEF)
   can be initialised once per process: after `KCEF.dispose` it can't come back
   without an engine restart. So at idle every page and renderer is gone, and
@@ -168,10 +172,10 @@ server's side.
 - Workstation (Arch, Temurin 21.0.13 from tsundoku's bundle, `DISPLAY` unset,
   2026-11-11/12): MKissa 16.75 (a page, a JavaScript interface, a script
   evaluated on `onPageFinished`, the site's own app decrypting the reply)
-  resolves an episode's 8 videos in 8-17 s; DramaTip 14.1 (its player run in
-  the page, pressed by a script, its playlist request caught in
-  `shouldInterceptRequest`) resolves HLS episodes in 3-11 s (one show's
-  player serves a direct MP4, which DramaTip doesn't pick yet); AniZone 16.16
+  resolves an episode's 8 videos in 8-17 s; an extension that
+  runs its site's own player in the page, presses Play from a script and
+  catches the playlist request in `shouldInterceptRequest` resolves HLS
+  episodes in 3-11 s; AniZone 16.16
   lists, episodes and 2 videos (the stack fix, not WebView); Hyprland's
   window list did not change over 79 samples while pages ran; after each
   call no renderer remained, only the Xvfb.
@@ -211,6 +215,20 @@ Once a fix marked "to send" is merged upstream, drop our copy in the rebase.
   finding); the Aniyomi repositories publish APKs only, so dex2jar stays
   either way.
 - **The upstream pull requests** for the fixes marked "to send".
+- **Cloudflare through the same browser.** `CloudflareInterceptor` solves a
+  challenge through FlareSolverr only. With the WebView running it could solve
+  one itself, as Mihon's own interceptor does in its WebView: on a 403/503
+  from a Cloudflare server, open a page at the URL with the client's user
+  agent (`ChallengeLog.solving` already marks the host), wait until a
+  `cf_clearance` cookie appears for the host (`visitUrlCookies`, polled, a
+  30-60 s budget), copy the cookies across (the copy here already does) and
+  set the client's user agent for the host to the page's (`setSolvedUA`), then
+  retry. What it needs: a third branch beside FlareSolverr and the bridge,
+  behind a switch; the request thread to wait without holding a page slot
+  longer than the solve; and testing against real checks. Chromium 111 is the
+  risk: Turnstile and managed challenges may fingerprint an old, headless
+  browser and refuse it, which only trying shows. FlareSolverr would stay the
+  first choice where it runs.
 - **The headless WebView on a headless server**: the container case above
   ("Proven, and not"), and Windows, macOS and WSL, which nobody has run.
 - **Chromium 111, unsandboxed**, runs streaming sites' scripts as the user

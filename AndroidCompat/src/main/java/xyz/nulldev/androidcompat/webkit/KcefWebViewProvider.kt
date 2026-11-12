@@ -673,7 +673,7 @@ class KcefWebViewProvider(
      * Creating one is asynchronous: a close that arrives first is queued by
      * JCEF until the browser exists, and if the page (its client) is given
      * back in between, the late browser outlives it and keeps its renderer
-     * forever (DramaTip loads about:blank, then destroys, at once).
+     * forever (an extension that loads about:blank and destroys at once).
      */
     private val liveBrowsers = AtomicInteger()
 
@@ -808,7 +808,7 @@ class KcefWebViewProvider(
      * Android, navigated by [reuse] when it has one and the caller can, else a
      * new one. Closing a browser and creating another per navigation left a
      * renderer behind whenever the WebView was destroyed straight after
-     * (DramaTip loads about:blank, then destroys), one per call.
+     * (an extension that loads about:blank and then destroys it), one per call.
      */
     private fun headlessNavigate(
         url: String,
