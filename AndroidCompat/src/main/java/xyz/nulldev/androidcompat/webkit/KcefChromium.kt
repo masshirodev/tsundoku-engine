@@ -430,7 +430,9 @@ internal object ChromiumProbe {
             client
                 .createBrowser("data:text/html,<title>probe</title>", ChromiumSetup.offscreen(), false)
                 .createImmediately()
-            if (!loaded.await(PAGE_MS, TimeUnit.MILLISECONDS)) throw IllegalStateException("a blank page did not load in ${PAGE_MS / 1000} s")
+            if (!loaded.await(PAGE_MS, TimeUnit.MILLISECONDS)) {
+                throw IllegalStateException("a blank page did not load in ${PAGE_MS / 1000} s")
+            }
             println(OK)
             System.out.flush()
         } catch (error: Throwable) {

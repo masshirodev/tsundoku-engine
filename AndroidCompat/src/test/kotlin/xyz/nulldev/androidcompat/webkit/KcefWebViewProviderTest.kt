@@ -12,6 +12,7 @@ import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -183,7 +184,7 @@ class KcefWebViewProviderTest {
     fun anExtensionThatEvaluatesOnEveryPageFinishedDoesNotLoopOnAFailure() {
         val starter = FailingStarter(ChromiumRuntime.PermanentFailure("no X display"))
         enableWith(starter)
-        val errors = java.util.concurrent.atomic.AtomicInteger()
+        val errors = AtomicInteger()
         val client =
             object : WebViewClient() {
                 override fun onReceivedError(

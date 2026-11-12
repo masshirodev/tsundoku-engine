@@ -75,8 +75,8 @@ import org.cef.callback.CefCallback
 import org.cef.callback.CefMediaAccessCallback
 import org.cef.callback.CefQueryCallback
 import org.cef.handler.CefDisplayHandlerAdapter
-import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLifeSpanHandlerAdapter
+import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefMessageRouterHandlerAdapter
 import org.cef.handler.CefPermissionHandler
@@ -142,8 +142,6 @@ class KcefWebViewProvider(
         @Volatile
         var bridgePort: Int = 0
 
-        // Optional: nothing in this engine binds one (Suwayomi does), and a
-        // lookup that throws would take the WebView's constructor down with it.
         /** A navigation (a frame's document), and not one loadUrl or postUrl started. */
         internal fun asksShouldOverrideUrlLoading(
             resourceType: CefRequest.ResourceType?,
@@ -154,6 +152,8 @@ class KcefWebViewProvider(
                 !frameUrl.isNullOrEmpty() &&
                 !ownNavigation
 
+        // Optional: nothing in this engine binds one (Suwayomi does), and a
+        // lookup that throws would take the WebView's constructor down with it.
         private val initHandler: InitBrowserHandler? by lazy {
             runCatching { DI.global.direct.instance<InitBrowserHandler>() }.getOrNull()
         }

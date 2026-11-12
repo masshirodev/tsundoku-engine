@@ -15,6 +15,8 @@ import kotlinx.serialization.json.put
 import org.cef.network.CefCookie
 import org.cef.network.CefCookieManager
 import java.util.Date
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** A cookie as both sides of [HeadlessWebView]'s cookie copy see it. */
 data class WebCookie(
@@ -70,7 +72,7 @@ object HeadlessWebView {
     var fromHttpClient: ((url: String) -> List<WebCookie>)? = null
 
     private val timer =
-        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+        Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "webview-timer").apply { isDaemon = true }
         }
 
@@ -79,7 +81,11 @@ object HeadlessWebView {
         millis: Long,
         block: () -> Unit,
     ) {
-        timer.schedule({ runCatching(block).onFailure { logger.warn(it) { "A WebView deadline failed" } } }, millis, java.util.concurrent.TimeUnit.MILLISECONDS)
+        timer.schedule(
+            { runCatching(block).onFailure { logger.warn(it) { "A WebView deadline failed" } } },
+            millis,
+            TimeUnit.MILLISECONDS,
+        )
     }
 
     /** A WebView extension was loaded: have Chromium ready (downloaded, started) by its first call. */

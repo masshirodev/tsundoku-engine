@@ -1,6 +1,7 @@
 package xyz.nulldev.androidcompat.webkit
 
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -9,7 +10,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WebViewConfigTest {
-    private fun config(vararg env: Pair<String, String>) = WebViewConfig.fromEnvironment(env = env.toMap()::get, rootDir = { "/data/engine" })
+    private fun config(vararg env: Pair<String, String>) =
+        WebViewConfig.fromEnvironment(env = env.toMap()::get, rootDir = { "/data/engine" })
 
     @Test
     fun offUnlessAskedFor() {
@@ -58,7 +60,7 @@ class HeadlessDisplayTest {
 
     @Test
     fun xvfbIsFoundOnThePath() {
-        val dir = kotlin.io.path.createTempDirectory("path").toFile()
+        val dir = createTempDirectory("path").toFile()
         try {
             assertNull(HeadlessDisplay.onPath("Xvfb", dir.path))
             val binary = File(dir, "Xvfb").apply { writeText("#!/bin/sh\n") }
@@ -71,7 +73,7 @@ class HeadlessDisplayTest {
 
     @Test
     fun aPrivateDisplaySkipsEveryNumberAServerHolds() {
-        val tmp = kotlin.io.path.createTempDirectory("x11").toFile()
+        val tmp = createTempDirectory("x11").toFile()
         try {
             File(tmp, ".X90-lock").writeText("1134\n")
             File(tmp, ".X11-unix").mkdirs()
