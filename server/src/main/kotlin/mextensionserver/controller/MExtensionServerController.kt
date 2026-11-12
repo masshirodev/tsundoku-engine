@@ -71,6 +71,10 @@ class MExtensionServerController(
     private inner class WebServer(
         port: Int,
     ) : NanoHTTPD(bindHost, port) {
+        init {
+            setAsyncRunner(DeepStackAsyncRunner())
+        }
+
         override fun serve(session: IHTTPSession): Response {
             if (session.uri != "/" && !authorized(session)) {
                 return newFixedLengthResponse(Response.Status.UNAUTHORIZED, MIME_PLAINTEXT, "Unauthorized")
