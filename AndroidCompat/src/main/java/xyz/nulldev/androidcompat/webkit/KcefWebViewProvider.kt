@@ -996,18 +996,20 @@ class KcefWebViewProvider(
         }
     }
 
+    // Nullable: Android takes a null callback ("no result wanted"), and extensions
+    // pass one (MKissa's onPageFinished); non-null, Kotlin threw before the script ran.
     override fun evaluateJavaScript(
         script: String,
-        resultCallback: ValueCallback<String>,
+        resultCallback: ValueCallback<String>?,
     ) {
         if (HeadlessWebView.enabled && browser == null) {
             val evaluate: (KCEFClient) -> Unit = {
                 val ready = browser
                 if (ready == null) {
-                    handler.post { resultCallback.onReceiveValue(null) }
+                    handler.post { resultCallback?.onReceiveValue(null) }
                 } else {
                     ready.evaluateJavaScript(script.removePrefix("javascript:")) { result ->
-                        handler.post { resultCallback.onReceiveValue(result) }
+                        handler.post { resultCallback?.onReceiveValue(result) }
                     }
                 }
             }
@@ -1020,13 +1022,13 @@ class KcefWebViewProvider(
                 synchronized(pageLock) {
                     (page != null && kcefClient == null).also { pending ->
                         if (pending) {
-                            pendingActions.add(PendingAction(evaluate) { handler.post { resultCallback.onReceiveValue(null) } })
+                            pendingActions.add(PendingAction(evaluate) { handler.post { resultCallback?.onReceiveValue(null) } })
                         }
                     }
                 }
             if (!queued) {
                 val client = kcefClient
-                if (client != null) runPageAction(client, evaluate) else handler.post { resultCallback.onReceiveValue(null) }
+                if (client != null) runPageAction(client, evaluate) else handler.post { resultCallback?.onReceiveValue(null) }
             }
             return
         }
@@ -1036,21 +1038,21 @@ class KcefWebViewProvider(
                 script.removePrefix("javascript:"),
                 {
                     Log.v(TAG, "JS returned: $it")
-                    handler.post { resultCallback.onReceiveValue(it) }
+                    handler.post { resultCallback?.onReceiveValue(it) }
                 },
             )
         } else if (bridgePort > 0) {
             Thread {
                 try {
                     val jsResult = executeBridgeJavascript(bridgePort, currentUrl ?: "", script)
-                    handler.post { resultCallback.onReceiveValue(jsResult) }
+                    handler.post { resultCallback?.onReceiveValue(jsResult) }
                 } catch (e: Exception) {
                     Log.w(TAG, "Bridge JS evaluation failed", e)
-                    handler.post { resultCallback.onReceiveValue(null) }
+                    handler.post { resultCallback?.onReceiveValue(null) }
                 }
             }.start()
         } else {
-            handler.post { resultCallback.onReceiveValue(null) }
+            handler.post { resultCallback?.onReceiveValue(null) }
         }
     }
 

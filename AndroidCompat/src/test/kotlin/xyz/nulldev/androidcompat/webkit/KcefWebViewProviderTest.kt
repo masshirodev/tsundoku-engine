@@ -166,6 +166,14 @@ class KcefWebViewProviderTest {
     }
 
     @Test
+    fun aScriptWithNoCallbackIsAllowedAsOnAndroid() {
+        HeadlessWebView.configOverride = WebViewConfig(enabled = false, dir = File("unused"), maxPages = 1, pageLifetimeMs = 60_000)
+
+        // MKissa does this from onPageFinished; it threw a NullPointerException.
+        onLooper { WebView(ContextWrapper(null)).evaluateJavascript("document.title", null) }
+    }
+
+    @Test
     fun anExtensionThatEvaluatesOnEveryPageFinishedDoesNotLoopOnAFailure() {
         val starter = FailingStarter(ChromiumRuntime.PermanentFailure("no X display"))
         enableWith(starter)
