@@ -131,6 +131,44 @@ class KcefWebViewProvider(
 
     private val handler = Handler(view.webViewLooper)
 
+    /**
+     * Calls into the extension's clients go through here. What they throw
+     * would otherwise end in the looper's log only, with the extension's own
+     * call waiting on a latch until it times out or answers with nothing.
+     */
+    private fun post(block: () -> Unit) {
+        handler.post {
+            try {
+                block()
+            } catch (error: Throwable) {
+                recordIncident("the extension's WebView callback threw ${error.javaClass.simpleName}: ${error.message}")
+                throw error
+            }
+        }
+    }
+
+    /** The extension this WebView belongs to: whose classes its clients are. */
+    private fun owner(): ClassLoader? =
+        viewClient.javaClass.classLoader?.takeIf { viewClient.javaClass != WebViewClient::class.java }
+            ?: chromeClient.javaClass.classLoader?.takeIf { chromeClient.javaClass != WebChromeClient::class.java }
+
+    /** An extension callback CEF calls on its own threads: what it throws is recorded, and [fallback] stands in. */
+    private inline fun <T> fromExtension(
+        fallback: T,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (error: Exception) {
+            recordIncident("the extension's WebView callback threw ${error.javaClass.simpleName}: ${error.message}")
+            Log.w(TAG, "A WebViewClient callback threw", error)
+            fallback
+        }
+
+    private fun recordIncident(message: String) {
+        WebViewIncidents.record(owner(), message)
+    }
+
     companion object {
         const val TAG = "KcefWebViewProvider"
         const val QUERY_FN = "__\$_suwayomiQuery"
@@ -263,7 +301,7 @@ class KcefWebViewProvider(
             title: String,
         ) {
             currentTitle = title
-            handler.post { chromeClient.onReceivedTitle(view, title) }
+            post { chromeClient.onReceivedTitle(view, title) }
         }
 
         override fun onStatusMessage(
@@ -283,7 +321,7 @@ class KcefWebViewProvider(
             val url = frame.url ?: ""
             Log.v(TAG, "Load end $url")
             if (HeadlessWebView.enabled && frame.isMain) HeadlessWebView.pullCookies(url)
-            handler.post {
+            post {
                 if (httpStatusCode == 404) {
                     viewClient.onReceivedError(
                         view,
@@ -318,7 +356,7 @@ class KcefWebViewProvider(
         ) {
             Log.w(TAG, "Load error ($failedUrl) [$errorCode]: $errorText")
             // TODO: translate correctly
-            handler.post {
+            post {
                 viewClient.onReceivedError(view, WebViewClient.ERROR_UNKNOWN, errorText, frame.url)
             }
         }
@@ -352,7 +390,7 @@ class KcefWebViewProvider(
                 browser.executeJavaScript(js, "SUWAYOMI ${it.toNice()}", 0)
             }
 
-            handler.post { viewClient.onPageStarted(view, frame.url, null) }
+            post { viewClient.onPageStarted(view, frame.url, null) }
         }
     }
 
@@ -378,7 +416,7 @@ class KcefWebViewProvider(
                     it.functionName == invoke.functionName &&
                         it.interfaceName == invoke.interfaceName
                 }?.let {
-                    handler.post {
+                    post {
                         try {
                             Log.v(
                                 TAG,
@@ -497,13 +535,15 @@ class KcefWebViewProvider(
                 request.resourceType == CefRequest.ResourceType.RT_MAIN_FRAME && ownNavigationPending.getAndSet(false)
             val cancel =
                 asksShouldOverrideUrlLoading(request.resourceType, frame?.url, ownNavigation) &&
-                    viewClient.shouldOverrideUrlLoading(
-                        view,
-                        CefWebResourceRequest(request, frame, false),
-                    )
+                    fromExtension(false) {
+                        viewClient.shouldOverrideUrlLoading(
+                            view,
+                            CefWebResourceRequest(request, frame, false),
+                        )
+                    }
             Log.v(TAG, "Resource ${request?.url}, result is cancel? $cancel")
 
-            handler.post { viewClient.onLoadResource(view, frame?.url) }
+            post { viewClient.onLoadResource(view, frame?.url) }
 
             return cancel || settings.blockNetworkLoads
         }
@@ -521,10 +561,12 @@ class KcefWebViewProvider(
                 if (isInitialLoad) {
                     null
                 } else {
-                    viewClient.shouldInterceptRequest(
-                        view,
-                        CefWebResourceRequest(request, frame, false),
-                    )
+                    fromExtension(null) {
+                        viewClient.shouldInterceptRequest(
+                            view,
+                            CefWebResourceRequest(request, frame, false),
+                        )
+                    }
                 }
             if (response == null) {
                 // prefer user's response override
@@ -552,7 +594,7 @@ class KcefWebViewProvider(
             browser: CefBrowser,
             status: CefRequestHandler.TerminationStatus,
         ) {
-            handler.post {
+            post {
                 viewClient.onRenderProcessGone(
                     view,
                     object : RenderProcessGoneDetail() {
@@ -573,7 +615,7 @@ class KcefWebViewProvider(
             requested_permissions: Int,
             callback: CefMediaAccessCallback,
         ): Boolean {
-            handler.post {
+            post {
                 Log.v(TAG, "Checking permission for $requesting_url: $requested_permissions")
                 chromeClient.onPermissionRequest(CefPermissionRequest(requesting_url, requested_permissions, callback))
             }
@@ -744,7 +786,8 @@ class KcefWebViewProvider(
         reason: String,
     ) {
         Log.w(TAG, "WebView for $url: $reason")
-        handler.post {
+        recordIncident(reason)
+        post {
             viewClient.onReceivedError(view, WebViewClient.ERROR_UNKNOWN, reason, url)
             chromeClient.onProgressChanged(view, 100)
             viewClient.onPageFinished(view, url)
@@ -914,7 +957,8 @@ class KcefWebViewProvider(
             executeBridgeWebview(bridgePort, loadUrl, combinedHeaders)
         } else {
             Log.w(TAG, "Desktop WebView is unavailable and no bridge configured; failing gracefully for $loadUrl")
-            handler.post {
+            recordIncident("WebView is unavailable (this engine runs without ENGINE_WEBVIEW, and no bridge is configured)")
+            post {
                 viewClient.onReceivedError(
                     view,
                     WebViewClient.ERROR_UNKNOWN,
@@ -989,7 +1033,8 @@ class KcefWebViewProvider(
             executeBridgeWebview(bridgePort, url, headers, postData = postData)
         } else {
             Log.w(TAG, "Desktop WebView is unavailable and no bridge configured; failing gracefully for $url")
-            handler.post {
+            recordIncident("WebView is unavailable (this engine runs without ENGINE_WEBVIEW, and no bridge is configured)")
+            post {
                 viewClient.onReceivedError(
                     view,
                     WebViewClient.ERROR_UNKNOWN,
@@ -1061,7 +1106,7 @@ class KcefWebViewProvider(
             }
         }
 
-        handler.post {
+        post {
             chromeClient.onProgressChanged(view, 100)
             viewClient.onPageFinished(view, baseUrl ?: "")
         }
@@ -1077,10 +1122,10 @@ class KcefWebViewProvider(
             val evaluate: (KCEFClient) -> Unit = {
                 val ready = browser
                 if (ready == null) {
-                    handler.post { resultCallback?.onReceiveValue(null) }
+                    post { resultCallback?.onReceiveValue(null) }
                 } else {
                     ready.evaluateJavaScript(script.removePrefix("javascript:")) { result ->
-                        handler.post { resultCallback?.onReceiveValue(result) }
+                        post { resultCallback?.onReceiveValue(result) }
                     }
                 }
             }
@@ -1093,13 +1138,13 @@ class KcefWebViewProvider(
                 synchronized(pageLock) {
                     (page != null && kcefClient == null).also { pending ->
                         if (pending) {
-                            pendingActions.add(PendingAction(evaluate) { handler.post { resultCallback?.onReceiveValue(null) } })
+                            pendingActions.add(PendingAction(evaluate) { post { resultCallback?.onReceiveValue(null) } })
                         }
                     }
                 }
             if (!queued) {
                 val client = kcefClient
-                if (client != null) runPageAction(client, evaluate) else handler.post { resultCallback?.onReceiveValue(null) }
+                if (client != null) runPageAction(client, evaluate) else post { resultCallback?.onReceiveValue(null) }
             }
             return
         }
@@ -1109,21 +1154,21 @@ class KcefWebViewProvider(
                 script.removePrefix("javascript:"),
                 {
                     Log.v(TAG, "JS returned: $it")
-                    handler.post { resultCallback?.onReceiveValue(it) }
+                    post { resultCallback?.onReceiveValue(it) }
                 },
             )
         } else if (bridgePort > 0) {
             Thread {
                 try {
                     val jsResult = executeBridgeJavascript(bridgePort, currentUrl ?: "", script)
-                    handler.post { resultCallback?.onReceiveValue(jsResult) }
+                    post { resultCallback?.onReceiveValue(jsResult) }
                 } catch (e: Exception) {
                     Log.w(TAG, "Bridge JS evaluation failed", e)
-                    handler.post { resultCallback?.onReceiveValue(null) }
+                    post { resultCallback?.onReceiveValue(null) }
                 }
             }.start()
         } else {
-            handler.post { resultCallback?.onReceiveValue(null) }
+            post { resultCallback?.onReceiveValue(null) }
         }
     }
 
@@ -1464,21 +1509,21 @@ class KcefWebViewProvider(
                         }
                     }
 
-                    handler.post {
+                    post {
                         chromeClient.onProgressChanged(view, 100)
                         viewClient.onPageFinished(view, finalUrl)
                     }
                 } else {
                     val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "HTTP $code"
                     Log.w(TAG, "Bridge returned error: $err")
-                    handler.post {
+                    post {
                         viewClient.onReceivedError(view, WebViewClient.ERROR_UNKNOWN, err, url)
                         viewClient.onPageFinished(view, url)
                     }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Bridge request failed for $url", e)
-                handler.post {
+                post {
                     viewClient.onReceivedError(
                         view,
                         WebViewClient.ERROR_HOST_LOOKUP,

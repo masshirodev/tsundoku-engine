@@ -58,6 +58,7 @@ import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import xyz.nulldev.androidcompat.webkit.WebViewIncidents
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeoutException
 
@@ -97,6 +98,40 @@ object MihonInvoker {
 
         preparePreferences(data, source)
 
+        val since = WebViewIncidents.now()
+        val result = invokeSourceMethod(source, data)
+        failIfEmptyAfterWebViewIncident(result, since, loadedExtension.loader)
+        return result
+    }
+
+    /**
+     * An empty answer from an extension whose WebView failed during the call is
+     * that failure, not "nothing found": the extension waited on a WebView that
+     * never answered (no WebView here, a page that couldn't load, its own
+     * WebView callback throwing on the looper) and gave up with nothing.
+     */
+    internal fun failIfEmptyAfterWebViewIncident(
+        result: Any?,
+        since: Long,
+        loader: ClassLoader,
+    ) {
+        if (!isEmptyAnswer(result)) return
+        val incident = WebViewIncidents.firstSince(since, loader) ?: return
+        throw IllegalStateException("The extension's WebView failed: ${incident.message}")
+    }
+
+    private fun isEmptyAnswer(result: Any?): Boolean =
+        when (result) {
+            is Collection<*> -> result.isEmpty()
+            is MangaResponse -> result.mangas.isNullOrEmpty()
+            is AnimeResponse -> result.animes.isNullOrEmpty()
+            else -> false
+        }
+
+    private fun invokeSourceMethod(
+        source: Any,
+        data: DataBody,
+    ): Any {
         if (UniqueStreamCompat.supports(source, data.method)) {
             return UniqueStreamCompat.invoke(source as AnimeHttpSource, data)
         }

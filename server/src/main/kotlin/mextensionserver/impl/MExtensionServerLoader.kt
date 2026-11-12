@@ -66,6 +66,9 @@ object MExtensionServerLoader {
         var sources: List<Any> = initialSources
             private set
 
+        /** Whose classes the extension's are: its WebViews' incidents are told apart by it (WebViewIncidents). */
+        val loader: ClassLoader get() = classLoader
+
         /**
          * Recreate factory children after request preferences have been
          * applied. Configurable factories such as Jellyfin decide how many

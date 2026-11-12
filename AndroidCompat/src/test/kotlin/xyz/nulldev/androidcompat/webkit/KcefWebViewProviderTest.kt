@@ -217,6 +217,39 @@ class KcefWebViewProviderTest {
     }
 
     @Test
+    fun whatGoesWrongInAnExtensionsWebViewIsKeptForItsCall() {
+        HeadlessWebView.configOverride = WebViewConfig(enabled = false, dir = File("unused"), maxPages = 1, pageLifetimeMs = 60_000)
+        WebViewIncidents.clear()
+        val since = WebViewIncidents.now()
+        val thrown = java.util.concurrent.CountDownLatch(1)
+        val client =
+            object : WebViewClient() {
+                override fun onPageFinished(
+                    view: WebView,
+                    url: String?,
+                ) {
+                    thrown.countDown()
+                    throw IllegalStateException("the extension's own bug")
+                }
+            }
+
+        onLooper {
+            WebView(ContextWrapper(null)).apply {
+                webViewClient = client
+                loadUrl("https://example.org/")
+            }
+        }
+        assertTrue(thrown.await(5, TimeUnit.SECONDS))
+        Thread.sleep(200)
+
+        val owner = client.javaClass.classLoader
+        val incident = assertNotNull(WebViewIncidents.firstSince(since, owner))
+        // The first thing that went wrong: there was no WebView to be had.
+        assertTrue("unavailable" in incident.message, incident.message)
+        assertNull(WebViewIncidents.firstSince(since, ClassLoader.getPlatformClassLoader()))
+    }
+
+    @Test
     fun withTheSwitchOffAWebViewFailsAsUpstreamsDoesWithoutStartingAnything() {
         HeadlessWebView.configOverride = WebViewConfig(enabled = false, dir = File("unused"), maxPages = 1, pageLifetimeMs = 60_000)
         val starter = FailingStarter(IllegalStateException("must not start"))
