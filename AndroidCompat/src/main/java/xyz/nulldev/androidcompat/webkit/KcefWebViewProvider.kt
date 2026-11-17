@@ -528,7 +528,7 @@ class KcefWebViewProvider(
             // Android asks shouldOverrideUrlLoading about navigations only, and not
             // about the one loadUrl started. Asked about every resource, an
             // extension's "stay on the site" check cancelled each script and
-            // stylesheet from a CDN, and the page never ran (MKissa, 2026-11-11).
+            // stylesheet from a CDN, and the page never ran.
             // TODO: we should be calling this on the handler, since CEF calls us on its IO thread
             // thus if a client tried to use WebView#loadUrl as the docs suggest, this fails
             val ownNavigation =
@@ -1113,7 +1113,7 @@ class KcefWebViewProvider(
     }
 
     // Nullable: Android takes a null callback ("no result wanted"), and extensions
-    // pass one (MKissa's onPageFinished); non-null, Kotlin threw before the script ran.
+    // pass one (from onPageFinished); non-null, Kotlin threw before the script ran.
     override fun evaluateJavaScript(
         script: String,
         resultCallback: ValueCallback<String>?,
@@ -1133,7 +1133,7 @@ class KcefWebViewProvider(
             // after the navigation queued ahead, as a real WebView would. No page
             // coming: null now. Never ask for a page here: an extension that
             // evaluates from onPageFinished would, after a failed load, ask for
-            // one, fail, finish, evaluate again (538 times in 30 s, MKissa).
+            // one, fail, finish, evaluate again (538 times in 30 s, before this).
             val queued =
                 synchronized(pageLock) {
                     (page != null && kcefClient == null).also { pending ->

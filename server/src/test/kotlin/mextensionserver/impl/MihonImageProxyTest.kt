@@ -218,7 +218,7 @@ class MihonImageProxyTest {
         override val baseUrl = "https://anime.test"
         override val supportsLatest = false
 
-        // A site that answers only the extension's own client, with its headers (AnimePahe's posters).
+        // A site that answers only the extension's own client, with its headers.
         override val client: OkHttpClient =
             OkHttpClient
                 .Builder()

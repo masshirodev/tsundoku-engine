@@ -34,8 +34,8 @@ internal val isWindows = osName.startsWith("windows")
 internal val isMac = osName.startsWith("mac")
 
 /**
- * How the engine's Chromium is set up. Measured on the workstation
- * (2026-11-11, Chromium 111.0.5563.64): with Chromium's defaults one open
+ * How the engine's Chromium is set up. Measured on a Linux desktop
+ * (Chromium 111.0.5563.64): with Chromium's defaults one open
  * page meant six processes (two zygotes, a GPU process, the network service,
  * a renderer and a spare renderer), and five stayed after the page closed.
  * With these switches one page is one renderer, and nothing stays.
@@ -186,7 +186,7 @@ internal object DiscardingRenderHandler : CefRenderHandler {
  * shutdown hook, and tsundoku's launcher stops the engine's process group).
  * Not `-terminate`: Xvfb then exits when its last client lets go, and a
  * connection Chromium opens and closes while starting is enough to take the
- * display away under it, which aborts it (seen in a container, 2026-11-12).
+ * display away under it, which aborts it (seen in a container).
  */
 internal object HeadlessDisplay {
     class Handle(
@@ -217,8 +217,8 @@ internal object HeadlessDisplay {
     }
 
     private fun startXvfb(binary: File): Handle {
-        // Numbered by hand: -displayfd handed back :1, the desktop's own
-        // XWayland, on the workstation (2026-11-11), and with -terminate it
+        // Numbered by hand: on a Wayland desktop -displayfd handed back :1,
+        // the desktop's own XWayland, and with -terminate it
         // exits at once. From 90 up, past anything a desktop or ssh -X uses.
         // A number free on this filesystem can still be taken: X also listens on
         // an abstract socket, which belongs to the network namespace, so a

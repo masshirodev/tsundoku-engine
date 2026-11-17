@@ -816,8 +816,8 @@ object MihonInvoker {
 
     /**
      * An anime's poster through the image proxy, as bridgeManga does a manga's:
-     * the site may refuse a client that isn't the extension's (AnimePahe's
-     * posters answer a plain request with a Cloudflare 403).
+     * the site may refuse a client that isn't the extension's (a source's
+     * posters answered a plain request with a Cloudflare 403).
      */
     private fun bridgeAnime(
         source: AnimeCatalogueSource,

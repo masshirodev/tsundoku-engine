@@ -30,7 +30,7 @@ data class WebViewConfig(
         const val DEFAULT_PAGES = 2
         private const val MAX_PAGES = 8
 
-        /** Longer than any extension's own WebView timeout seen (Senshi and MKissa wait 30-60 s). */
+        /** Longer than any extension's own WebView timeout seen (the longest wait 30-60 s). */
         const val PAGE_LIFETIME_MS = 120_000L
 
         fun fromEnvironment(

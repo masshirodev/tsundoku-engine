@@ -18,7 +18,7 @@ import kotlin.test.assertSame
 class AppModuleTest {
     // Sources inject it as `injectLazy<ProtoBuf>()`, so it must be found under
     // ProtoBuf itself: registered without the type parameter it is keyed as
-    // ProtoBuf.Default, and MANGA Plus died in its static initialiser.
+    // ProtoBuf.Default, and a protobuf source died in its static initialiser.
     @Test
     fun `provides ProtoBuf under the type protobuf sources inject`() {
         val scope = InjektScope(DefaultRegistrar())

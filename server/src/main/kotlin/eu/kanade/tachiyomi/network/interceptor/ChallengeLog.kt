@@ -10,10 +10,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Which hosts' browser checks are being solved now, and when each was last
- * solved, so a client waiting on a slow first call can say why it's slow
- * (tsundoku's BROWSE: "a site's check is named at once"). In memory: after a
- * restart the next challenge is the first again, which is also what the
- * site's cookie says.
+ * solved, so a client waiting on a slow first call can say why it's slow,
+ * and name the check at once. In memory: after a restart the next challenge
+ * is the first again, which is also what the site's cookie says.
  */
 object ChallengeLog {
     private val solving = ConcurrentHashMap<String, Long>()

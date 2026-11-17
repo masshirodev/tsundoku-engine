@@ -106,9 +106,9 @@ internal object MihonImageProxy {
     ): String? = registerPoster(source.id, { source.client }, { source.headers }, title, url, resolver)
 
     /**
-     * An anime's poster, through its source's client: some sites (AnimePahe's
-     * i.animepahe.pw) answer a plain request with a Cloudflare 403, and only
-     * the extension's client holds the clearance.
+     * An anime's poster, through its source's client: some sites answer a plain
+     * request with a Cloudflare 403, and only the extension's client holds
+     * the clearance.
      */
     internal fun registerAnimePoster(
         source: AnimeHttpSource,

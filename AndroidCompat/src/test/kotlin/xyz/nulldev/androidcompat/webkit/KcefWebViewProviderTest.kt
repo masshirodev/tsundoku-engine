@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
  * A WebView driven the way every WebView extension drives one: created and
  * loaded on a looper thread, answered through its WebViewClient. When
  * Chromium can't start, the extension must hear a load error on that thread,
- * not a throw (the spike saw AniZone's request thread die instead).
+ * not a throw (a throw there killed the extension's request thread).
  */
 class KcefWebViewProviderTest {
     private val looperThread =
@@ -167,7 +167,7 @@ class KcefWebViewProviderTest {
         assertTrue(ask(CefRequest.ResourceType.RT_MAIN_FRAME, "https://site.example/"))
         assertTrue(ask(CefRequest.ResourceType.RT_SUB_FRAME, "https://site.example/"))
         // The page's own scripts, styles and XHRs, from a CDN or not: never
-        // (MKissa's "stay on the site" check cancelled its whole app).
+        // (an extension's "stay on the site" check cancelled its whole app).
         assertFalse(ask(CefRequest.ResourceType.RT_SCRIPT, "https://site.example/"))
         assertFalse(ask(CefRequest.ResourceType.RT_STYLESHEET, "https://site.example/"))
         assertFalse(ask(CefRequest.ResourceType.RT_XHR, "https://site.example/"))
@@ -182,7 +182,7 @@ class KcefWebViewProviderTest {
     fun aScriptWithNoCallbackIsAllowedAsOnAndroid() {
         HeadlessWebView.configOverride = WebViewConfig(enabled = false, dir = File("unused"), maxPages = 1, pageLifetimeMs = 60_000)
 
-        // MKissa does this from onPageFinished; it threw a NullPointerException.
+        // Extensions do this from onPageFinished; it threw a NullPointerException.
         onLooper { WebView(ContextWrapper(null)).evaluateJavascript("document.title", null) }
     }
 
@@ -202,7 +202,7 @@ class KcefWebViewProviderTest {
                     errors.incrementAndGet()
                 }
 
-                // MKissa's StreamResolver does exactly this.
+                // A real extension's resolver does exactly this.
                 override fun onPageFinished(
                     view: WebView,
                     url: String?,

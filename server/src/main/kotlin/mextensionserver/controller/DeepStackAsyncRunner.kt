@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Extensions run on the request thread. Android's java.util.regex is ICU's
  * and doesn't recurse; the JVM's recurses once per repetition, so a pattern
  * an extension runs over a whole page overflows the JVM's default 1 MB stack:
- * AniZone 16.15 and 16.16 died with StackOverflowError in Pattern$Loop on
- * their first list, and the client saw the connection close.
+ * a source's extension died with StackOverflowError in Pattern$Loop on
+ * its first list, and the client saw the connection close.
  */
 internal class DeepStackAsyncRunner : NanoHTTPD.AsyncRunner {
     private val running = Collections.synchronizedList(mutableListOf<NanoHTTPD.ClientHandler>())

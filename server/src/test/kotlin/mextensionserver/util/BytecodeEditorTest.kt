@@ -68,8 +68,8 @@ class BytecodeEditorTest {
     // R8 drops trivial constructors all the way up a chain, which ART allows,
     // and dex2jar then folds `new-instance Singleton` plus `Object.<init>` into
     // `new Object`. With an abstract class between the singleton and Object,
-    // the store into its INSTANCE failed verification (Aethon Webcomics 1.6.0:
-    // "Type 'java/lang/Object' is not assignable to 'p'").
+    // the store into its INSTANCE failed verification (in a source's
+    // extension: "Type 'java/lang/Object' is not assignable to 'p'").
     @Test
     fun `restores a singleton whose abstract parent lost its constructor too`() {
         val jar = Files.createTempFile("bytecode-editor-test", ".jar")
@@ -97,8 +97,8 @@ class BytecodeEditorTest {
     // dex2jar can write a max_stack smaller than the method needs. The repair's
     // frame analysis then threw "Insufficient maximum stack size" and the whole
     // method was skipped, so an erased `new Object` stayed erased and the
-    // putfield into it failed verification (Weeb Central 1.6.26 as re-released
-    // on 2026-11-07, h.intercept @387: "Type 'java/lang/Object' is not
+    // putfield into it failed verification (a source's extension,
+    // h.intercept @387: "Type 'java/lang/Object' is not
     // assignable to 'x'"). One pass must repair it, as the loader runs one.
     @Test
     fun `repairs an erased allocation in a method whose max stack dex2jar understated`() {

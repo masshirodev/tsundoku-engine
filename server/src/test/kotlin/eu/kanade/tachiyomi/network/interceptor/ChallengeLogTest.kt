@@ -14,16 +14,16 @@ class ChallengeLogTest {
     fun `a host is solving while its check runs, then solved, and a failed solve isn't`() {
         ChallengeLog.clear()
         var during = ""
-        ChallengeLog.solving("toonily.com") {
+        ChallengeLog.solving("example.org") {
             during = ChallengeLog.json()
             "solution"
         }
-        assertTrue(during.contains("\"solving\":{\"toonily.com\":"), during)
+        assertTrue(during.contains("\"solving\":{\"example.org\":"), during)
         val after = ChallengeLog.json()
-        assertTrue(after.startsWith("{\"solving\":{},\"solved\":{\"toonily.com\":"), after)
+        assertTrue(after.startsWith("{\"solving\":{},\"solved\":{\"example.org\":"), after)
 
         ChallengeLog.clear()
-        ChallengeLog.solving<String?>("asuracomic.net") { null }
+        ChallengeLog.solving<String?>("example.net") { null }
         assertTrue(ChallengeLog.json() == "{\"solving\":{},\"solved\":{}}", ChallengeLog.json())
     }
 }

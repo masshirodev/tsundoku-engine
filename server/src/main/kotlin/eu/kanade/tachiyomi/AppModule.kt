@@ -37,7 +37,7 @@ class AppModule(
             }
         }
 
-        // Mihon's app module provides this; MANGA Plus and other protobuf sources inject it.
+        // Mihon's app module provides this; protobuf sources inject it.
         addSingletonFactory<ProtoBuf> { ProtoBuf }
     }
 }

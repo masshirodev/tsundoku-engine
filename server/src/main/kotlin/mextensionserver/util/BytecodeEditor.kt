@@ -120,8 +120,8 @@ object BytecodeEditor {
      * recount (COMPUTE_MAXS) can agree with it while its Analyzer still needs
      * one more slot. The Analyzer refuses such a method ("Insufficient maximum
      * stack size"), and every repair here skipped it whole, so an erased
-     * allocation in it was never put back (Weeb Central 1.6.26 as re-released
-     * on 2026-11-07: h.intercept needs 9, says 8). The headroom is for the
+     * allocation in it was never put back (an extension's h.intercept needed 9
+     * and said 8). The headroom is for the
      * analysis only: the declared size is put back, and the class is written
      * with its sizes recomputed in transform().
      */

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 
 /**
  * The JVM's regex recurses once per repetition; Android's doesn't. An
- * extension's pattern over a long page (AniZone) must not kill its request.
+ * extension's pattern over a long page must not kill its request.
  */
 class DeepStackAsyncRunnerTest {
     // One recursion per repetition: 20k of them is about 7 MB of stack, past
