@@ -32,9 +32,9 @@ class AndroidCompatModule {
             // Context
             bind<CustomContext>() with singleton { CustomContext() }
             bind<Context>() with
-                    singleton {
-                        val context: Context by DI.global.instance<CustomContext>()
-                        context
-                    }
+                singleton {
+                    val context: Context by DI.global.instance<CustomContext>()
+                    context
+                }
         }
 }
