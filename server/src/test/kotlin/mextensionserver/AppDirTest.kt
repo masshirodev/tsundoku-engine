@@ -1,5 +1,11 @@
 package mextensionserver
 
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
 import xyz.nulldev.ts.config.ApplicationRootDir
 import xyz.nulldev.ts.config.CONFIG_PREFIX
 import kotlin.test.AfterTest
