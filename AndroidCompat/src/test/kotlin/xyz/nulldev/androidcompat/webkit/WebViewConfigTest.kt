@@ -32,7 +32,7 @@ class WebViewConfigTest {
     @Test
     fun chromiumLivesInTheEngineDataFolderUnlessToldOtherwise() {
         assertEquals(File("/data/engine", "webview/chromium"), config().dir)
-        assertEquals(File("/mnt/big/chromium"), config(WebViewConfig.DIR_ENV to "/mnt/big/chromium").dir)
+        assertEquals(File("/srv/engine/chromium"), config(WebViewConfig.DIR_ENV to "/srv/engine/chromium").dir)
     }
 
     @Test
