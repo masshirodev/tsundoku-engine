@@ -18,3 +18,9 @@ dist
 *.swp
 *.swo
 *~
+
+# macOS
+.DS_Store
+
+# Machine-specific agent notes (AGENTS.md is the tracked half)
+AGENTS.local.md
