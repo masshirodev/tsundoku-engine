@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Runs the Gradle test suite in a throwaway JDK 21 container, as the
 # Dockerfile's build stage does, so nothing needs installing on the host and
-# no Gradle daemon or JVM is left running afterwards. On the workstation,
-# Suwayomi's JVM runs as the same user, so "kill the java processes" after a
-# host build is not something to do casually. The Gradle cache lives outside
-# home (GRADLE_CACHE, default /mnt/hdd2/tsundoku/engine/gradle-home), because
-# it grows to gigabytes.
+# no Gradle daemon or JVM is left running afterwards: on a machine where
+# another JVM runs as the same user (Suwayomi, an IDE), "kill the java
+# processes" after a host build is not something to do casually. The Gradle
+# cache grows to gigabytes; point GRADLE_CACHE elsewhere to keep it off the
+# default, ${XDG_CACHE_HOME:-$HOME/.cache}/tsundoku-engine/gradle.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-cache="${GRADLE_CACHE:-/mnt/hdd2/tsundoku/engine/gradle-home}"
+cache="${GRADLE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/tsundoku-engine/gradle}"
 mkdir -p "$cache"
 docker build -q -t tsundoku-engine-test -f scripts/test.Dockerfile scripts >/dev/null
 
