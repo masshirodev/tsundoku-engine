@@ -4,5 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # Every route but / runs or proxies extension code, so compose
+      # refuses to start the engine without a token. Clients send it as
+      # "Authorization: Bearer <token>".
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?set ENGINE_TOKEN}
     ports:
-      - "8080:8080"
+      # Inside the container the engine listens on every interface (ENGINE_HOST
+      # unset); published to the host's loopback only, so nothing else on the
+      # network can reach it.
+      - "127.0.0.1:8080:8080"
