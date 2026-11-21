@@ -17,7 +17,11 @@ allprojects {
     repositories {
         mavenCentral()
         google()
-        maven("https://github.com/Suwayomi/Suwayomi-Server/raw/android-jar/")
+        // A commit of the android-jar branch, not the branch: Suwayomi regenerates
+        // android-jar 1.0.0 in place as its AndroidCompat takes classes over, so a
+        // fresh resolve of the branch drops stubs this fork's AndroidCompat still
+        // compiles against (doc/FORK.md). Move the pin with the classes it needs.
+        maven("https://github.com/Suwayomi/Suwayomi-Server/raw/7488b5cd498c0ee945c41d0b07205ec8f1e21314/")
         maven("https://jogamp.org/deployment/maven")
         maven("https://maven.google.com/")
         maven("https://jitpack.io")
