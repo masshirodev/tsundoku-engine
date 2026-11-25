@@ -79,7 +79,7 @@ class MExtensionServerController(
             if (session.uri != "/" && !authorized(session)) {
                 return newFixedLengthResponse(Response.Status.UNAUTHORIZED, MIME_PLAINTEXT, "Unauthorized")
             }
-            return route(session)
+            return EngineRoutes.route(session) { stop() }
         }
 
         private fun authorized(session: IHTTPSession): Boolean {
@@ -88,49 +88,5 @@ class MExtensionServerController(
             if (!header.startsWith("Bearer ")) return false
             return MessageDigest.isEqual(header.removePrefix("Bearer ").toByteArray(), expected.toByteArray())
         }
-
-        private fun route(session: IHTTPSession): Response =
-            when (session.uri) {
-                "/dalvik" -> DalvikHandler().serve(session)
-                "/" -> newFixedLengthResponse("mextensionserver Server Running")
-                "/capabilities" ->
-                    newFixedLengthResponse(
-                        Response.Status.OK,
-                        "application/json",
-                        """{"mangayomiMihonBridge":1,"sourceFactory":true,"preferenceCallbacks":true,"imageProxy":true,"videoProxy":true,"youtubeResolver":false,"sourceUrls":true,"extensionHandles":true,"extensionInfo":true,"webviewBridge":true,"webview":${xyz.nulldev.androidcompat.webkit.HeadlessWebView.enabled}}""",
-                    )
-                // The headless Chromium WebView extensions run in, and how it is (the fork's, ENGINE_WEBVIEW).
-                "/webview" ->
-                    newFixedLengthResponse(
-                        Response.Status.OK,
-                        "application/json",
-                        xyz.nulldev.androidcompat.webkit.HeadlessWebView
-                            .statusJson(),
-                    )
-                // Which hosts' browser checks are being solved now, and when each last was (the fork's).
-                "/challenges" ->
-                    newFixedLengthResponse(
-                        Response.Status.OK,
-                        "application/json",
-                        eu.kanade.tachiyomi.network.interceptor.ChallengeLog
-                            .json(),
-                    )
-                "/stop" -> {
-                    newFixedLengthResponse("Server stopping").also {
-                        Thread {
-                            Thread.sleep(100)
-                            stop()
-                        }.start()
-                    }
-                }
-                else ->
-                    if (session.uri.startsWith(ImageProxyHandler.ROUTE_PREFIX)) {
-                        ImageProxyHandler().serve(session)
-                    } else if (session.uri.startsWith(VideoProxyHandler.ROUTE_PREFIX)) {
-                        VideoProxyHandler().serve(session)
-                    } else {
-                        newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
-                    }
-            }
     }
 }
