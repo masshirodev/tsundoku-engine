@@ -251,6 +251,16 @@ class MihonVideoProxyTest {
         assertEquals(srtContent, response.stream.use { it.readBytes().decodeToString() })
     }
 
+    @Test
+    fun `an engine with no listener hands out URLs under the origin it is given`() {
+        MihonVideoProxy.configureOrigin("https://app.example.org/engine")
+
+        val url = requireNotNull(MihonVideoProxy.register(OkHttpClient(), "https://example.test/v/master.m3u8"))
+
+        assertTrue(url.startsWith("https://app.example.org/engine/video/"), url)
+        assertTrue(url.endsWith(".m3u8"), url)
+    }
+
     private fun String.token(): String = URI(this).path.substringAfterLast('/')
 
     private fun String.proxyTokens(): Set<String> =
