@@ -52,6 +52,22 @@ class MihonImageProxyTest {
     }
 
     @Test
+    fun `an engine with no listener hands out URLs under the origin it is given`() {
+        val source = TestHttpSource()
+        MihonImageProxy.configureOrigin("https://app.example.org/engine/")
+
+        val proxyUrl = requireNotNull(MihonImageProxy.register(source, Page(0, imageUrl = "https://example.test/1.jpg")))
+
+        assertTrue(proxyUrl.startsWith("https://app.example.org/engine/image/"), proxyUrl)
+        assertContentEquals(source.imageBytes, requireNotNull(MihonImageProxy.fetch(proxyUrl.substringAfterLast('/'))).bytes)
+    }
+
+    @Test
+    fun `nothing is registered before a port or an origin is set`() {
+        assertEquals(null, MihonImageProxy.register(TestHttpSource(), Page(0, imageUrl = "https://example.test/1.jpg")))
+    }
+
+    @Test
     fun `fetches ordinary posters through the extension client`() {
         val source = TestHttpSource()
         MihonImageProxy.configure(39641)

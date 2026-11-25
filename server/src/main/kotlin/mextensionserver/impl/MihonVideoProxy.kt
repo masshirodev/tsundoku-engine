@@ -58,12 +58,19 @@ internal object MihonVideoProxy {
     private val entriesByToken = LinkedHashMap<String, Entry>(16, 0.75f, true)
     private val tokensByKey = mutableMapOf<String, String>()
 
+    // Where the proxy's URLs point: the loopback listener, or the origin a
+    // client without a socket routes back to the engine (the browser target).
     @Volatile
-    private var port: Int = 0
+    private var origin: String? = null
 
     fun configure(port: Int) {
         require(port > 0) { "Video proxy port must be positive" }
-        this.port = port
+        origin = "http://127.0.0.1:$port"
+    }
+
+    fun configureOrigin(origin: String) {
+        require(origin.startsWith("http://") || origin.startsWith("https://")) { "Video proxy origin must be http(s)" }
+        this.origin = origin.trimEnd('/')
     }
 
     fun proxy(
@@ -107,9 +114,9 @@ internal object MihonVideoProxy {
         headers: Headers = Headers.Builder().build(),
         suffixHint: String? = null,
     ): String? {
-        val currentPort = port
+        val currentOrigin = origin
         val target = url.toHttpUrlOrNull()
-        if (currentPort <= 0 || target == null || target.scheme !in setOf("http", "https")) {
+        if (currentOrigin == null || target == null || target.scheme !in setOf("http", "https")) {
             return null
         }
 
@@ -146,15 +153,15 @@ internal object MihonVideoProxy {
                     tokensByKey[key] = newToken
                 }
             }
-        return proxyUrl(currentPort, token, target, suffixHint)
+        return proxyUrl(currentOrigin, token, target, suffixHint)
     }
 
     fun registerLocalFile(
         file: java.io.File,
         suffixHint: String? = null,
     ): String? {
-        val currentPort = port
-        if (currentPort <= 0 || !file.exists()) {
+        val currentOrigin = origin
+        if (currentOrigin == null || !file.exists()) {
             return null
         }
         val key = "file\u0000${file.absolutePath}"
@@ -180,7 +187,7 @@ internal object MihonVideoProxy {
                 }
             }
         val suffix = suffixHint ?: if (file.extension.isNotEmpty()) ".${file.extension}" else ""
-        return "http://127.0.0.1:$currentPort/video/$token$suffix"
+        return "$currentOrigin/video/$token$suffix"
     }
 
     fun fetch(
@@ -406,11 +413,11 @@ internal object MihonVideoProxy {
     private fun HttpUrl.isLoopback(): Boolean = host == "localhost" || host == "127.0.0.1" || host == "::1"
 
     private fun proxyUrl(
-        currentPort: Int,
+        currentOrigin: String,
         token: String,
         target: HttpUrl,
         suffixHint: String?,
-    ): String = "http://127.0.0.1:$currentPort/video/$token${target.mediaFileSuffix().ifEmpty { suffixHint.orEmpty() }}"
+    ): String = "$currentOrigin/video/$token${target.mediaFileSuffix().ifEmpty { suffixHint.orEmpty() }}"
 
     private fun String.mediaFileSuffix(): String = toHttpUrlOrNull()?.mediaFileSuffix().orEmpty()
 
@@ -425,6 +432,6 @@ internal object MihonVideoProxy {
             entriesByToken.clear()
             tokensByKey.clear()
         }
-        port = 0
+        origin = null
     }
 }

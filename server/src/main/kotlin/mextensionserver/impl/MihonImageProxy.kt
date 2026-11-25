@@ -58,20 +58,26 @@ internal object MihonImageProxy {
     private val lock = Any()
     private val entriesByToken = LinkedHashMap<String, Entry>(16, 0.75f, true)
 
+    // Where the proxy's URLs point: the loopback listener, or the origin a
+    // client without a socket routes back to the engine (the browser target).
     @Volatile
-    private var port: Int = 0
+    private var origin: String? = null
 
     fun configure(port: Int) {
         require(port > 0) { "Image proxy port must be positive" }
-        this.port = port
+        origin = "http://127.0.0.1:$port"
+    }
+
+    fun configureOrigin(origin: String) {
+        require(origin.startsWith("http://") || origin.startsWith("https://")) { "Image proxy origin must be http(s)" }
+        this.origin = origin.trimEnd('/')
     }
 
     fun register(
         source: HttpSource,
         page: Page,
     ): String? {
-        val currentPort = port
-        if (currentPort <= 0) return null
+        val currentOrigin = origin ?: return null
 
         val key =
             buildString {
@@ -95,7 +101,7 @@ internal object MihonImageProxy {
             entriesByToken[token] = PageEntry(key, source, page)
         }
 
-        return proxyUrl(currentPort, token)
+        return proxyUrl(currentOrigin, token)
     }
 
     internal fun registerPoster(
@@ -124,8 +130,7 @@ internal object MihonImageProxy {
         url: String,
         resolver: (OkHttpClient, String) -> String?,
     ): String? {
-        val currentPort = port
-        if (currentPort <= 0) return null
+        val currentOrigin = origin ?: return null
 
         val key =
             buildString {
@@ -158,7 +163,7 @@ internal object MihonImageProxy {
                 )
         }
 
-        return proxyUrl(currentPort, token)
+        return proxyUrl(currentOrigin, token)
     }
 
     private fun tokenForKey(key: String): String =
@@ -286,14 +291,14 @@ internal object MihonImageProxy {
         }
 
     private fun proxyUrl(
-        currentPort: Int,
+        currentOrigin: String,
         token: String,
-    ): String = "http://127.0.0.1:$currentPort/image/$token"
+    ): String = "$currentOrigin/image/$token"
 
     fun clear() {
         synchronized(lock) {
             entriesByToken.clear()
         }
-        port = 0
+        origin = null
     }
 }
