@@ -73,7 +73,17 @@ fun main(args: Array<String>) {
     }
 }
 
-internal fun initApplication(appDir: String?) {
+/**
+ * Starts the engine's Android shim and its dependencies, once per process.
+ * [mainLooper] and [webView] are on for every engine with a listener; an
+ * engine in a browser tab (the fork's browser target) has no WebView to run
+ * and turns them off to start sooner (`doc/FORK.md`, "The browser target").
+ */
+fun initApplication(
+    appDir: String?,
+    mainLooper: Boolean = true,
+    webView: Boolean = true,
+) {
     synchronized(applicationInitLock) {
         if (applicationInitialized) return
 
@@ -83,7 +93,7 @@ internal fun initApplication(appDir: String?) {
         appDir?.let(::useAppDir)
         CookieHandler.setDefault(CookieManager())
 
-        startMainLooper()
+        if (mainLooper) startMainLooper()
 
         // Load config API
         DI.global.addImport(ConfigKodeinModule().create())
@@ -93,7 +103,7 @@ internal fun initApplication(appDir: String?) {
         androidCompat.startApp(App())
         // A WebView's cookies and the extensions' HTTP client's are one jar in
         // Mihon; join them here (HeadlessWebView, doc/FORK.md).
-        WebViewSupport.connect(Injekt.get<NetworkHelper>().cookieJar)
+        if (webView) WebViewSupport.connect(Injekt.get<NetworkHelper>().cookieJar)
         applicationInitialized = true
     }
 }
