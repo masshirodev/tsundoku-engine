@@ -9,6 +9,7 @@ package mextensionserver.impl
 
 import android.content.pm.PackageInfo
 import io.github.oshai.kotlinlogging.KotlinLogging
+import mextensionserver.BuildConfig
 import mextensionserver.util.Extension
 import mextensionserver.util.PackageTools.dex2jar
 import mextensionserver.util.PackageTools.getPackageInfo
@@ -39,6 +40,16 @@ object MExtensionServerLoader {
     private const val MANGA_PACKAGE = "tachiyomi.extension"
     private const val ANIME_PACKAGE = "tachiyomi.animeextension"
     private const val METADATA_SOURCE_CLASS_SUFFIX = ".class"
+
+    /**
+     * Where converted extensions are kept, under their APK's SHA-256 and the
+     * engine's revision, so an APK is converted once rather than on every
+     * start. Unset (the default, as upstream), every load converts. The
+     * fork's browser target sets it: dex2jar there is the slowest step of a
+     * first call, and the tab's files persist between visits.
+     */
+    @Volatile
+    var convertedJarDir: File? = null
 
     init {
         // Close classloaders before deleting their JARs, including on JVM exit.
@@ -162,13 +173,20 @@ object MExtensionServerLoader {
                 }
             logger.debug { "Main class for extension is $className" }
 
-            // Convert to JAR
-            val dexFile = File(tempApkFile.absolutePath)
+            // Convert to JAR, or take the copy converted before.
+            val converted = convertedJarDir?.let { File(it, "${sha256(apkData)}-${BuildConfig.REVISION}.jar") }
+            if (converted != null && converted.isFile) {
+                converted.copyTo(jarFile, overwrite = true)
+            } else {
+                val dexFile = File(tempApkFile.absolutePath)
 
-            dex2jar(dexFile, jarFile)
+                dex2jar(dexFile, jarFile)
 
-            // Extract assets and resources from APK
-            Extension.extractAssetsFromApk(tempApkFile, jarFile)
+                // Extract assets and resources from APK
+                Extension.extractAssetsFromApk(tempApkFile, jarFile)
+
+                converted?.let { keepConverted(jarFile, it) }
+            }
 
             // Load extension sources
             val loadedSource = loadExtensionSources(jarFile, className, tempApkFile)
@@ -212,6 +230,21 @@ object MExtensionServerLoader {
             if (tempApkFile.exists()) {
                 tempApkFile.delete()
             }
+        }
+    }
+
+    /** Written beside and renamed into place, so a half-written copy is never taken for one. */
+    private fun keepConverted(
+        jarFile: File,
+        converted: File,
+    ) {
+        try {
+            converted.parentFile?.mkdirs()
+            val partial = File(converted.parentFile, converted.name + ".part")
+            jarFile.copyTo(partial, overwrite = true)
+            if (!partial.renameTo(converted)) partial.delete()
+        } catch (error: Exception) {
+            logger.warn(error) { "Failed to keep the converted extension at ${converted.absolutePath}" }
         }
     }
 
