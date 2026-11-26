@@ -26,8 +26,6 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    env:
-      GRADLE_CACHE: ${{ runner.temp }}/gradle
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The Gradle cache grows to gigabytes and makes a second run minutes faster.
@@ -36,8 +34,13 @@ jobs:
           path: ${{ runner.temp }}/gradle
           key: gradle-${{ hashFiles('gradle/**', '**/*.gradle.kts', 'gradle.properties') }}
           restore-keys: gradle-
+      # `runner` is a step's context, not a job's: GRADLE_CACHE is set on each step.
       - run: scripts/test.sh build
+        env:
+          GRADLE_CACHE: ${{ runner.temp }}/gradle
       - run: scripts/test.sh :browser:slimJar
+        env:
+          GRADLE_CACHE: ${{ runner.temp }}/gradle
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: engine-browser
