@@ -35,6 +35,7 @@ val projects = listOf(
     project(":AndroidCompat"),
     project(":AndroidCompat:Config"),
     project(":server"),
+    project(":browser"),
 )
 
 configure(projects) {
