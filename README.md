@@ -46,6 +46,23 @@ scripts/test.sh build              # lint, tests and the jar
 Its Gradle cache defaults to `${XDG_CACHE_HOME:-~/.cache}/tsundoku-engine/gradle`;
 set `GRADLE_CACHE` to keep it somewhere else. It grows to about a gigabyte.
 
+### The browser target
+
+`:browser` builds the engine for a browser tab, run by
+[CheerpJ](https://cheerpj.com/) (tsundoku's web edition): no socket, every
+request the engine makes handed to the page, and a jar slimmed to what a tab
+can load.
+
+```sh
+./gradlew :browser:slimJar         # browser/build/libs/engine-browser.jar
+./gradlew :browser:test            # its tests (scripts/test.sh runs them too)
+```
+
+[`doc/FORK.md`](doc/FORK.md), "The browser target", has the JavaScript
+contract, what the slim jar keeps and why, and what was measured;
+[`browser/test/README.md`](browser/test/README.md) is the headless check in
+Chromium and Firefox. The desktop jar above contains none of it.
+
 ## Running
 
 ```sh

@@ -1,0 +1,6 @@
+[
+	{ "name": "weebcentral", "kind": "plain HTML", "sourceId": "2131019126180322627", "query": "frieren" },
+	{ "name": "mangadex", "kind": "JSON API", "sourceId": "2499283573021220255", "query": "frieren" },
+	{ "name": "mangaplus", "kind": "ProtoBuf", "sourceId": "1998944621602463790", "query": "one piece", "chapter": "first" },
+	{ "name": "mangahere", "kind": "QuickJS", "sourceId": "2", "query": "frieren" }
+]

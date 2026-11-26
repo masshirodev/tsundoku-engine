@@ -1,0 +1,14 @@
+{
+	"name": "tsundoku-engine-browser-check",
+	"private": true,
+	"description": "The browser target's headless check in CheerpJ (README.md). A manual check, not part of scripts/test.sh.",
+	"license": "MPL-2.0",
+	"type": "module",
+	"scripts": {
+		"chromium": "node run.mjs chromium",
+		"firefox": "node run.mjs firefox"
+	},
+	"dependencies": {
+		"playwright": "1.63.0"
+	}
+}
