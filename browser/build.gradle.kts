@@ -18,6 +18,8 @@ plugins {
 
 dependencies {
     implementation(project(":server"))
+    // For the classes this target replaces (QuickJs), compiled against their neighbours.
+    implementation(project(":AndroidCompat"))
     implementation(libs.bundles.okhttp)
     testImplementation(kotlin("test"))
 }
