@@ -40,6 +40,11 @@ ours.
 | `evaluateJavascript` takes a null callback                                              | Android allows it and extensions pass one (from `onPageFinished`); the Kotlin override was non-null, so it threw before the script ran. | to send |
 | An empty answer after the extension's WebView failed is that failure (`WebViewIncidents`) | An extension waits on its WebView from the request thread; when the WebView fails (none to be had, a page that won't load, the extension's own WebView callback throwing on the looper, where the Looper only logs it), the extension often gives up with an empty list, and the client took "no videos" for an answer. The provider keeps each such incident with the extension's class loader, and a call to that extension that comes back empty after one answers with an error saying what happened. | could offer |
 | `ENGINE_WEBVIEW`: WebViews in a headless Chromium (below)                              | WebView extensions failed: `KcefWebViewProvider` was registered but `KCEF.init` was never called. | could offer |
+| The routes live in `EngineRoutes`, outside the NanoHTTPD server class | Only a request read off a socket could reach the handlers. The browser target (below) builds the session itself and sends it through the same routes, so the two cannot drift apart. `/stop` answers 404 where there is nothing to stop. | no (ours) |
+| The image and video proxies can point at a given origin (`configureOrigin`, `EngineRoutes.useProxyOrigin`) | Their URLs were always `http://127.0.0.1:<port>/...`. An engine with no listener answers its proxy URLs through whatever origin its client routes back to it. `configure(port)` still sets the loopback one. | no (ours) |
+| Converted extensions can be kept (`MExtensionServerLoader.convertedJarDir`) | Every load converted the APK with dex2jar again. Set, the converted jar is kept under the APK's SHA-256 and the engine's revision (a newer engine may repair bytecode differently) and reused. Unset, as upstream. The browser target sets it. | could offer |
+| `initApplication` is public, with `mainLooper` and `webView` switches | The browser target starts the engine from its own module and runs no WebView. Both default to on. | no (ours) |
+| The browser target, `:browser` (below) | The engine run in a browser tab by CheerpJ, for tsundoku's web edition. A module of its own that depends on `:server`: the desktop jar has none of it. | no (ours) |
 | `docker-compose.yml` publishes `127.0.0.1:8080` and requires `ENGINE_TOKEN` | Upstream's published `8080` on every interface with no token: anyone on the network could load and run an APK. Compose now refuses to start without a token, and the engine, listening on every interface inside the container, is reachable from the host's loopback only. | no |
 | `scripts/test.sh`                                                                      | Runs the Gradle suite in a throwaway JDK container: no JDK on the host, no daemon left running (where another JVM, such as Suwayomi's, runs as the same user, killing "the java processes" is not safe).                                                                                                                                                                                                                                     | no                     |
 
@@ -206,6 +211,198 @@ server's side.
   runs), and the start check failed once in 3. Not the network, `/dev/shm`,
   fonts or the user; not resolved.
 - Not run: Windows, macOS, WSL, a desktop without Xvfb.
+
+## The browser target
+
+`:browser` runs the engine inside a browser tab, for tsundoku's web edition:
+CheerpJ (a JVM compiled to WebAssembly) loads `engine-browser.jar`, and the
+page calls the engine with no socket in between. Nothing in it changes the
+desktop engine: it is a module of its own that depends on `:server`, and
+`:server:shadowJar` contains none of it.
+
+### The contract
+
+What the app calls, and what it implements, all as strings (a Java object
+reaching JavaScript can't even be printed there, and strings cross cheaply):
+
+| Side | Signature | What |
+| ---- | --------- | ---- |
+| Java, called by the app | `tsundoku.browser.BrowserEngine.start(String dataDir)`, `start(String dataDir, String selfOrigin)` | Starts the engine once; later calls answer at once. Answers `{"ok":true,"ms":<n>}` or `{"error":"<text>"}`. |
+| Java, called by the app | `tsundoku.browser.BrowserEngine.handle(String head, String bodyBase64)` | One request to the engine, as it would have gone over HTTP. Answers a response frame; any failure is a `500` frame whose body is the stack trace. |
+| JavaScript, called by the engine | `static native String fetchNative(String head, String bodyBase64)` in `tsundoku.browser.BrowserTransport` (`Java_tsundoku_browser_BrowserTransport_fetchNative`) | Every request the engine makes to a source. Answers a response frame, or `ERR <message>`. |
+| JavaScript, called by the engine | `static native String evaluateNative(String script)` in `tsundoku.browser.BrowserScripts` (`Java_tsundoku_browser_BrowserScripts_evaluateNative`) | An extension's JavaScript (below). Answers `{"value":<JSON>}` (no `value` for `undefined`) or `{"error":"<message>"}`. |
+
+The frames (`Frames.kt`):
+
+- a request head is `METHOD\nURL\nName: value\n...`; its body travels
+  separately, as base64, empty for none;
+- a response is `STATUS\nName: value\n...\n\nBASE64BODY`.
+
+Neither Java method ever throws. `handle` before `start` is a `503` frame.
+
+- **`dataDir`** is where the engine's files go: CheerpJ's `/files/` persists
+  across visits. Under it, `tmp/` (an APK being converted; a tab has no
+  system temporary folder) and `extensions/` (converted extensions, below);
+  source preferences go where they go on a desktop, under the same root.
+- **`selfOrigin`** is where the engine's `/image/` and `/video/` URLs point
+  (`EngineRoutes.useProxyOrigin`), for example `https://app.example/engine`.
+  The app routes requests there back into `handle`. A head's URL may be a
+  path (`/dalvik`) or absolute: one under `selfOrigin` is routed by what
+  follows it. Without one, the URLs are `http://127.0.0.1/...`, which
+  tsundoku's client already rewrites onto the engine's address.
+- **No bearer token.** There is no listener, so nothing outside the tab can
+  reach the engine; `handle` takes an `Authorization` header and ignores it.
+  `/stop` is a 404.
+- **`X-Tsundoku-Final-Url`**, optional in `fetchNative`'s answer: the URL the
+  browser's fetch ended at (`response.url`). The browser follows redirects
+  itself, but some extensions read where a request ended up or turn
+  redirects off to read `Location`, so when it differs from the URL asked
+  for, OkHttp is shown a 302 to it and its follow-up is answered with what
+  was already fetched: one fetch, the redirect OkHttp would have seen.
+
+### How a request leaves the engine
+
+`ConnectInterceptor` in `browser/src/main/java/okhttp3/internal/connection/`
+takes the place of OkHttp's (first on this module's classpath, in its place
+in the slim jar). OkHttp's opens the socket; this one ends the chain by
+handing the request to `BrowserTransport`. Everything above it still runs:
+the extension's interceptors, the engine's user-agent and Cloudflare
+interceptors, rate limits, the cookie jar, the cache. Network interceptors
+and `CallServerInterceptor` never do. `Accept-Encoding` goes out unset (the
+browser decompresses and won't let a page choose), and `Content-Encoding`
+and `Content-Length` are dropped on the way back, since they describe bytes
+that are no longer there. OkHttp's cache needs an https response to carry a
+TLS handshake; it gets a stand-in. `-Dtsundoku.browser.transport=jdk` sends
+the same frames through `HttpURLConnection` instead, for the tests.
+
+### Extensions' JavaScript
+
+The engine's QuickJS is quickjs4j: QuickJS built to WebAssembly and
+interpreted by Chicory, in Java. In CheerpJ it works, and is too slow to
+use: about 20 s to create one, and a source's page script (an unpacker that
+`eval`s the page's packed code) ran for more than ten minutes without
+finishing, where the browser's own engine takes milliseconds. So the browser
+target has its own `app.cash.quickjs.QuickJs`, in AndroidCompat's place: the
+same API extensions are compiled against, each script sent to
+`evaluateNative`, results translated exactly as AndroidCompat's QuickJs
+translates them (a script's error included: a map with `error`, not a
+throw). Binding a Java object into a script (`set`) is refused, since the
+script runs where it can't call back into Java.
+
+The scripts are a site's, so the app must run them where they reach nothing
+of its own: a worker made from a `data:` URL, or an iframe sandboxed without
+`allow-same-origin`, both of which have an opaque origin (no storage, no
+cookies, no fetcher), with a time limit. The headless check does the first
+(`browser/test/page/worker.js`).
+
+### Start-up
+
+`BrowserEngine.start` runs `initApplication` with the WebView bridge off (a
+tab runs no Chromium) and sets `convertedJarDir`. It took 10-21 s in CheerpJ (Chromium
+153 and Firefox 155, headless), against the spike's 7.7 s, but every number
+here was taken on a workstation running far more than it has cores (load
+average about 55 on 12 threads), so they are upper bounds and noisy: the same
+start measured 12.7 s and 19.4 s in two runs a minute apart. Whether also
+leaving out the Android main looper (`BrowserEngine.setMainLooper(false)`,
+`?noLooper` in the check) shortens it could not be told apart from that
+noise (looper on: 19.4, 19.5, 15.0 s; off: 12.7, 16.4, 17.2 s), so the looper
+stays on: an extension may post to it. Measuring both on a quiet machine is
+still to do.
+
+### Converting extensions in the tab
+
+The engine takes an extension as its APK and converts it with dex2jar, which
+works inside CheerpJ unchanged. The first call to an extension
+carries its conversion: in Chromium a first `getPopularManga` took 18-32 s
+(cold), and 2.9-5.0 s once the converted jar was kept under
+`dataDir/extensions/` and the tab reloaded (warm), for three of the four
+extensions walked; so converting one extension in a tab costs about 15-27 s,
+once. (The fourth, a plain HTML source, took 20 s warm as well: not yet
+explained, and not seen with the others.) Prebuilt extension jars, which
+Keiyoushi publishes beside its APKs, would skip the conversion entirely
+("Not done yet", above).
+
+### The slim jar
+
+`./gradlew :browser:slimJar` writes `browser/build/libs/engine-browser.jar`
+(the list of classes kept, with counts, goes to
+`browser/build/slim/report.txt`). The builder is `browser/src/slim`, a build
+tool that is never in the jar it builds. A tab downloads and caches the
+whole jar it runs (a service worker has to: the browser's HTTP cache doesn't
+keep the range responses CheerpJ reads jars with), so it gets only what a tab
+can load:
+
+- **Classes reachable** from `BrowserEngine` and from every class in the
+  packages extensions are compiled against (`extensionApi` in
+  `browser/build.gradle.kts`: Mihon's and Aniyomi's source API, the Android
+  shim, OkHttp, okio, jsoup, Kotlin's standard library, kotlinx.coroutines and
+  kotlinx.serialization, RxJava, Injekt, QuickJs), through any reference a
+  class file holds, a type named only in a signature included. CheerpJ loads
+  such a class where HotSpot would not, which is why a list of what one
+  desktop run loaded (the spike's) was too small, and keeping those packages
+  whole is what lets an extension this build was never run with find what
+  it names. `./gradlew :browser:extensionSurface -Pjars=<dir>` lists the
+  packages a folder of extension jars names, to check the list against.
+- **Minus what a tab never runs** (`neverInBrowser`), neither kept nor
+  followed: Chromium's bridge (KCEF, JCEF), JOGL, JNA, the desktop window,
+  and quickjs4j with Chicory, which only AndroidCompat's QuickJs reached.
+- **Resources go with their code**: one is dropped when the nearest folder
+  above it holding classes holds none that were kept (ICU's 14 MB of data,
+  whose classes nothing reaches; JNA's native libraries). Fonts, Android's
+  resources and multi-release variants are dropped outright.
+- Inputs are read with this module's classes first, and the first copy of a
+  name wins: that is how its `ConnectInterceptor` and `QuickJs` replace
+  OkHttp's and AndroidCompat's.
+
+Measured: the shadow jar is 101.6 MB (27,416 classes);
+`engine-browser.jar` is 21.1 MB (13,211 classes, 168 resources). The spike's
+hand-made jar was 9.1 MB, but held only one extension's walk plus one level;
+this one keeps every package extensions are compiled against whole. A run
+read 17-19 MB of it by range.
+
+### Checked, and how
+
+`browser/src/test/kotlin` (part of `scripts/test.sh`): the frames, the
+transport through a real OkHttp client with the native stood in for, the
+redirect replay, `handle` never throwing (no start, a broken head, a bad
+body, an unknown method), the routes through a frame, a chunked response
+read back whole, and the QuickJs replacement's results.
+
+`browser/test/` is the headless check (its `README.md`): the slim jar in
+CheerpJ in a dedicated worker, in headless Chromium and Firefox, walking real
+Keiyoushi extensions through `handle`. It reaches real sites, so it is run by
+hand and is not part of `scripts/test.sh`. Measured with four Keiyoushi
+extensions, one of each kind: a plain HTML source, a JSON API, a ProtoBuf
+API, and one that runs the site's packed JavaScript through QuickJS. Every
+step answered in both browsers, cold and warm, with the same counts and the
+same image bytes as the desktop engine. Per call after the first, in
+milliseconds (cold run; the machine was overloaded, see "Start-up"):
+
+| Kind | Chromium | Firefox | Desktop engine |
+| ---- | -------- | ------- | -------------- |
+| Plain HTML | 540-3,822 | 600-5,970 | 1,156-2,193 |
+| JSON API | 693-2,098 (a 7 MB image) | 1,768-6,259 | 282-1,828 |
+| ProtoBuf | 691-7,933 | 604-5,769 | not run |
+| QuickJS | 914-3,231 (pages 2,469) | 1,154-5,294 (pages 4,570) | 884-4,028 (pages 3,274) |
+
+Start: CheerpJ ready 0.2-1.0 s, the jar opened 6.3-11.5 s, the engine started
+10.5-28.0 s. A first call to an extension: Chromium 18-32 s cold, 2.9-5.0 s
+warm; Firefox 46-71 s cold, 4.9-17.9 s warm.
+
+### Not done yet
+
+- **Start-up on a quiet machine**, with and without the main looper, and
+  where the start's seconds go: the numbers above are upper bounds.
+- **Concurrent calls**: `handle` called again before the last answered
+  (two extensions at once) is untested in CheerpJ.
+- **`/video/`**: `handle` reads a whole response into one frame, so a video
+  asked for without a bounded `Range` would be held in memory whole. The app
+  should ask for bounded ranges; untested.
+- **Deep regular expressions**: on a desktop, request threads have 64 MB
+  stacks (`DeepStackAsyncRunner`); `handle` runs on the caller's thread, whose
+  stack in CheerpJ is unmeasured.
+- **WebView extensions** fail in a tab, as with `ENGINE_WEBVIEW` off.
+- **Prebuilt extension jars**, to skip dex2jar in the tab.
 
 ## Following upstream
 

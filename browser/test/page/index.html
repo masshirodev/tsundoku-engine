@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>tsundoku-engine, browser target check</title>
+	<style>
+		body { font: 13px/1.5 ui-monospace, monospace; margin: 1.5rem; }
+		#log { white-space: pre-wrap; }
+	</style>
+</head>
+<body>
+	<p>tsundoku-engine's browser target in a dedicated worker. Built with <a href="https://cheerpj.com/">CheerpJ</a>.</p>
+	<div id="log"></div>
+	<script>
+		// ?only=a,b picks extensions; ?noLooper starts without the main looper.
+		const q = new URLSearchParams(location.search);
+		const params = {
+			only: q.get('only')?.split(','),
+			noLooper: q.has('noLooper'),
+			probe: q.get('probe'),
+			origin: location.origin + '/engine'
+		};
+		const out = document.getElementById('log');
+		const worker = new Worker('/worker.js');
+		worker.onmessage = async ({ data }) => {
+			if (data.type === 'log') {
+				out.textContent += `${(data.at / 1000).toFixed(1).padStart(6)}s ${data.line}\n`;
+				console.log('[check] ' + data.line);
+			}
+			if (data.type === 'done') {
+				data.results.userAgent = navigator.userAgent;
+				await fetch('/__results', { method: 'POST', body: JSON.stringify(data.results) });
+				document.title = 'done';
+			}
+		};
+		worker.onerror = (e) => {
+			out.textContent += 'worker error ' + e.message + '\n';
+			fetch('/__results', { method: 'POST', body: JSON.stringify({ error: 'worker error ' + e.message }) }).then(() => (document.title = 'done'));
+		};
+		worker.postMessage(params);
+	</script>
+</body>
+</html>
