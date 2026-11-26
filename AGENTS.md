@@ -55,5 +55,7 @@ kotlinter's lint rejects.
   provenance: the why is the mechanism, not when it was found.
 - No emoji in code or commits. No co-author trailers.
 - Push to `main`.
-- GitHub Actions stay off (`doc/FORK.md`, "GitHub Actions"):
-  `scripts/test.sh` is the check.
+- Only this fork's own workflow runs on GitHub (`.github/workflows/check.yml`,
+  `scripts/test.sh build`); upstream's two stay disabled in the repository's
+  settings (`doc/FORK.md`, "GitHub Actions"). It is the gate; `scripts/test.sh
+  build` is the same check, by hand.
