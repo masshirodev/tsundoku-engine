@@ -60,10 +60,16 @@ replace mode, so the engine's copy is only ever this process's.
 
 ## GitHub Actions
 
-**GitHub Actions are turned off** in this repository's settings, and upstream's two
-workflows stay off. They stay in `.github/workflows/` unchanged, so a rebase
-onto upstream doesn't conflict on them, but neither does anything this fork
-wants:
+**Only this fork's own workflow runs**: `.github/workflows/check.yml`, which
+runs `scripts/test.sh build` (lint, every test, the jars) in the same JDK 21
+container as on a workstation, on every push to `main` and every pull
+request, and keeps the browser target's slim jar as an artifact
+(`engine-browser`). The repository is public, so its runners are free.
+
+Upstream's two workflows stay in `.github/workflows/` unchanged, so a rebase
+onto upstream doesn't conflict on them, and stay **disabled** in the
+repository's Actions settings (`gh workflow disable`), since neither does
+anything this fork wants:
 
 - `build-ios-runtime.yml` builds and tests Mangayomi's on-device iOS runtime
   (`-PiosRuntime=true`) on every push and pull request, and publishes it as an
@@ -73,12 +79,12 @@ wants:
   installers (DMG, Windows zip and installer, deb, AppImage) and platform JREs
   as a GitHub release. This fork publishes no releases of its own: tsundoku
   builds the shadow jar from a commit and ships it inside its own release.
-  Left on, any `v*` tag pushed here would publish a release of installers
+  Enabled, any `v*` tag pushed here would publish a release of installers
   built by upstream's packaging scripts.
 
-`scripts/test.sh build` (lint, tests, the jar) is the check, run before a
-push. A workflow for this fork, if one is wanted, would be a new file that
-runs that, not one of these turned back on.
+A rebase that brings a new upstream workflow brings it enabled: disable it
+in the settings before pushing, unless the fork wants it. `scripts/test.sh
+build` is the same check, by hand.
 
 ## Headless WebView
 

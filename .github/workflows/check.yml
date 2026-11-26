@@ -1,0 +1,51 @@
+# This fork's own check (doc/FORK.md, "GitHub Actions"): `scripts/test.sh build`,
+# lint, every test and the jars, in the same JDK 21 container it uses on a
+# workstation, on every push to main and every pull request. It also builds
+# the browser target's slim jar and keeps it as an artifact, which tsundoku's
+# web edition takes as TSUNDOKU_ENGINE_JAR.
+#
+# Upstream's two workflows (build-ios-runtime.yml, publish.yml) stay in the
+# tree unchanged for rebases, and stay disabled in the repository's Actions
+# settings: this file is the only one that runs.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GRADLE_CACHE: ${{ runner.temp }}/gradle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The Gradle cache grows to gigabytes and makes a second run minutes faster.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gradle
+          key: gradle-${{ hashFiles('gradle/**', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: gradle-
+      - run: scripts/test.sh build
+      - run: scripts/test.sh :browser:slimJar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-browser
+          path: browser/build/libs/engine-browser.jar
+          retention-days: 30
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          retention-days: 7
