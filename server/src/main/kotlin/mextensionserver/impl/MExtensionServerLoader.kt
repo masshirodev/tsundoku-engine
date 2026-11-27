@@ -26,6 +26,15 @@ object MExtensionServerLoader {
     private val tempDir = Files.createTempDirectory("mextensionserver").toFile()
     private val apkStore = ApkStore.fromEnv()
 
+    /**
+     * The working folder, made again if it is gone. It is created once and
+     * kept for the server's whole life, so anything that tidies the temp
+     * folder while the server runs (a reaper, a person) removed it from under
+     * a live process, and every later load failed with "No such file or
+     * directory" until a restart.
+     */
+    internal fun workingDir(): File = tempDir.apply { mkdirs() }
+
     // Extensions retain pagination iterators and other request state. Keep one
     // instance per APK for the server lifetime instead of decoding it per call.
     private val loadedExtensions =
@@ -137,8 +146,9 @@ object MExtensionServerLoader {
     }
 
     private fun loadExtension(apkData: ByteArray): LoadedExtension {
-        val tempApkFile = File(tempDir, "extension-${UUID.randomUUID()}.apk")
-        val jarFile = File(tempDir, "extension-${UUID.randomUUID()}.jar")
+        val dir = workingDir()
+        val tempApkFile = File(dir, "extension-${UUID.randomUUID()}.apk")
+        val jarFile = File(dir, "extension-${UUID.randomUUID()}.jar")
         var classLoader: URLClassLoader? = null
         try {
             // Write APK data to temp file
